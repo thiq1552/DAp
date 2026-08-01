@@ -13,6 +13,9 @@ ExecStart=%h/.ccbus/venv/bin/ccbus-server
 WorkingDirectory=%h/.ccbus
 Restart=always
 RestartSec=3
+# Bind vào IP Tailscale thì lúc boot có thể ccbus lên trước tailscaled và bind
+# hỏng vài lần. Bỏ giới hạn số lần thử để systemd cứ thử lại tới khi được.
+StartLimitIntervalSec=0
 
 NoNewPrivileges=true
 PrivateTmp=true
