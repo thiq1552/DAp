@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cài ccbus lên MÁY CHỦ (máy chạy server — nên chọn máy RAM 16GB, bật thường xuyên nhất).
+# Cài ccbus lên MÁY CHỦ (máy chạy server — chọn máy bật thường xuyên nhất, địa chỉ ổn định).
 # Dùng: ./deploy/setup-host.sh [tên-máy-1 tên-máy-2 ...]
 set -euo pipefail
 
@@ -10,7 +10,7 @@ PORT="${CCBUS_PORT:-7717}"
 PROJECT="${CCBUS_DEFAULT_PROJECT:-default}"
 AGENTS=("$@")
 if [ ${#AGENTS[@]} -eq 0 ]; then
-  AGENTS=(ubuntu-16g ubuntu-8g-a ubuntu-8g-b mac)
+  AGENTS=(acer vivo cong-ty mac)
 fi
 
 mkdir -p "$CCBUS_HOME"

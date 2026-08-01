@@ -8,9 +8,9 @@ máy A không biết máy B vừa chốt schema gì, vừa sửa file nào.
 Mỗi máy đăng kết quả của mình lên bảng tin chung và đọc kết quả của máy khác khi cần.
 
 ```
-   ubuntu-16g  ──┐
-   ubuntu-8g-a ──┼──►  ccbus (HTTP/MCP + SQLite)  ◄── mac
-   ubuntu-8g-b ──┘         chạy trên máy 16GB
+   acer     ──┐
+   vivo     ──┼──►  ccbus (HTTP/MCP + SQLite)  ◄── mac
+   cong-ty  ──┘        chạy trên máy hay bật nhất
 ```
 
 Không cần chia sẻ ổ đĩa, không cần cả 4 máy cùng bật. Máy nào online thì đọc
@@ -44,11 +44,15 @@ Ba thứ đáng chú ý:
 
 ## Cài đặt
 
-### 1. Trên máy chủ (chọn máy 16GB, hay bật nhất)
+### 1. Trên máy chủ
+
+Chọn máy bật thường xuyên nhất và có địa chỉ ổn định — không phải máy mạnh nhất.
+Server rất nhẹ (vài chục MB), máy 8GB gánh thoải mái; nhưng server tắt là các máy
+kia mất bảng tin.
 
 ```bash
 git clone <repo> ccbus && cd ccbus
-./deploy/setup-host.sh ubuntu-16g ubuntu-8g-a ubuntu-8g-b mac
+./deploy/setup-host.sh acer vivo cong-ty mac
 ```
 
 Script sẽ tạo venv, sinh token riêng cho từng máy, cài systemd user service, và
