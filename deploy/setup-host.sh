@@ -27,6 +27,7 @@ fi
 
 if [ -f "$ENV_FILE" ]; then
   echo "==> $ENV_FILE đã tồn tại, giữ nguyên token cũ"
+  echo "    (muốn đổi hết token: mv $ENV_FILE $ENV_FILE.bak rồi chạy lại script này)"
 else
   echo "==> Sinh token cho: ${AGENTS[*]}"
   pairs=""
@@ -51,7 +52,10 @@ if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   mkdir -p "$HOME/.config/systemd/user"
   install -m 644 "$REPO_DIR/deploy/ccbus.service" "$HOME/.config/systemd/user/ccbus.service"
   systemctl --user daemon-reload
-  systemctl --user enable --now ccbus
+  systemctl --user enable ccbus
+  # restart chứ không phải `enable --now`: chạy lại script sau khi sửa env thì
+  # service đang chạy phải nạp lại cấu hình mới
+  systemctl --user restart ccbus
   loginctl enable-linger "$USER" 2>/dev/null || true
   sleep 2
   systemctl --user --no-pager --lines=5 status ccbus || true
