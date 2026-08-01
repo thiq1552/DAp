@@ -1,0 +1,23 @@
+# systemd *user* unit: cài vào ~/.config/systemd/user/ccbus.service
+# rồi:  systemctl --user enable --now ccbus
+#       loginctl enable-linger $USER   # để chạy cả khi chưa đăng nhập
+[Unit]
+Description=ccbus - bảng tin dùng chung cho Claude Code
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.ccbus/env
+ExecStart=%h/.ccbus/venv/bin/ccbus-server
+WorkingDirectory=%h/.ccbus
+Restart=always
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=%h/.ccbus
+
+[Install]
+WantedBy=default.target
