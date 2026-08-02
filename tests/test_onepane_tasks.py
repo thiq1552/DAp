@@ -76,7 +76,11 @@ def test_open_attaches_or_creates():
     argv = tasks.open_argv(["ssh", "thi@may-nha"], "zalo quét")
     assert argv[:2] == ["ssh", "thi@may-nha"]
     assert "-t" in argv  # cần tty, nếu không tmux từ chối chạy
-    assert "new-session -A -s 'op-zalo quét'" in argv[-1]
+    body = argv[-1]
+    # Tạo (nếu chưa có) -> đặt tuỳ chọn -> mới nối; `-A` không còn chỗ đặt tuỳ chọn.
+    assert "has-session -t 'op-zalo quét'" in body
+    assert "attach-session -t 'op-zalo quét'" in body
+    assert body.index("has-session") < body.index("attach-session")
 
 
 # ----------------------------------------------------------------- clipboard
@@ -151,8 +155,10 @@ def test_window_labels_are_not_auto_renamed():
 
     cfg = Config(hub=Hub(tmux_session="cum"), nodes=[Node(name="a", host="a")])
     opts = tmux.session_option_commands(cfg)
-    assert ["tmux", "set-option", "-t", "cum", "automatic-rename", "off"] in opts
-    assert ["tmux", "set-option", "-t", "cum", "allow-rename", "off"] in opts
+    # `-wg` chứ không phải `-t <phiên>`: đây là tuỳ chọn CỬA SỔ, đặt theo phiên
+    # chỉ trúng cửa sổ đang mở nên các cửa sổ khác vẫn bị đổi tên.
+    assert ["tmux", "set-option", "-wg", "automatic-rename", "off"] in opts
+    assert ["tmux", "set-option", "-wg", "allow-rename", "off"] in opts
 
 
 def test_build_applies_the_same_options_as_sync():
@@ -164,3 +170,9 @@ def test_build_applies_the_same_options_as_sync():
     built = tmux.build_commands(cfg, [("x", "echo 1")])
     for opt in tmux.session_option_commands(cfg):
         assert opt in built
+
+
+def test_inner_status_bar_is_hidden():
+    """Hai thanh trạng thái chồng nhau: hub đã ghi đủ việc gì/máy nào."""
+    assert "status off" in tasks.session_setup("'op-x'")
+    assert "status off" in tasks.open_argv(["ssh", "n"], "x")[-1]

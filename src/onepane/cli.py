@@ -521,6 +521,38 @@ def _task_windows(cfg: Config, found: list[tasks.Task]) -> list[tuple[str, str]]
     ]
 
 
+def _apply_options(cfg: Config) -> int:
+    """Áp tuỳ chọn tmux cho hub, báo rõ cái nào hỏng.
+
+    Trước đây nuốt hết lỗi ở đây, nên `prefix` không đặt được mà vẫn im lặng —
+    người dùng bấm phím theo hướng dẫn và không hiểu vì sao không ăn.
+    """
+    failed = 0
+    for command in tmux.session_option_commands(cfg):
+        res = subprocess.run(command, capture_output=True, text=True)
+        if res.returncode != 0:
+            failed += 1
+            option = command[command.index("set-option") + 1 :] if "set-option" in command else command
+            print(f"{WARN} tmux không nhận: {' '.join(option)} — {res.stderr.strip()}")
+    return failed
+
+
+def _verify_prefix(cfg: Config) -> None:
+    """Xác nhận phím dẫn đúng như tài liệu, vì sai phím là kẹt hoàn toàn."""
+    res = subprocess.run(
+        ["tmux", "show-options", "-t", cfg.hub.tmux_session, "prefix"],
+        capture_output=True,
+        text=True,
+    )
+    actual = res.stdout.strip()
+    if tmux.HUB_PREFIX not in actual:
+        print(
+            f"{WARN} phím dẫn đang là '{actual or 'mặc định C-b'}', không phải "
+            f"{tmux.HUB_PREFIX}. Dùng Ctrl-b thay cho {tmux.HUB_PREFIX}, "
+            f"hoặc chạy: onepane term --recreate"
+        )
+
+
 def _print_windows(cfg: Config) -> None:
     """Danh sách cửa sổ thật, để đối chiếu thay vì đoán qua thanh trạng thái."""
     res = subprocess.run(tmux.list_windows_command(cfg), capture_output=True, text=True)
@@ -548,8 +580,7 @@ def _sync_existing_session(cfg: Config, nodes: list[Node], args: argparse.Namesp
     """
     # Phiên có thể đã dựng bằng bản cũ, khi automatic-rename còn bật. Áp lại
     # tuỳ chọn trước khi đọc tên cửa sổ, nếu không tên đã bị đổi thành "ssh".
-    for command in tmux.session_option_commands(cfg):
-        subprocess.run(command, capture_output=True)
+    _apply_options(cfg)
 
     listing = subprocess.run(
         tmux.list_windows_command(cfg), capture_output=True, text=True
@@ -579,6 +610,7 @@ def _sync_existing_session(cfg: Config, nodes: list[Node], args: argparse.Namesp
         print(f"{OK} nối vào phiên '{session}' đang có")
 
     _print_windows(cfg)
+    _verify_prefix(cfg)
     return _attach_or_stop(cfg, args)
 
 
@@ -605,11 +637,15 @@ def cmd_term(args: argparse.Namespace) -> int:
     for command in tmux.build_commands(cfg, windows):
         res = subprocess.run(command, capture_output=True, text=True)
         if res.returncode != 0:
-            err(f"tmux lỗi: {res.stderr.strip() or ' '.join(command)}")
-            return 1
+            # Tạo cửa sổ hỏng là chặn hẳn; đặt tuỳ chọn hỏng thì chỉ xấu giao diện.
+            if command[1] in ("new-session", "new-window"):
+                err(f"tmux lỗi: {res.stderr.strip() or ' '.join(command)}")
+                return 1
+            print(f"{WARN} tmux không nhận: {' '.join(command[2:])} — {res.stderr.strip()}")
 
     print(f"{OK} phiên '{cfg.hub.tmux_session}': {len(windows)} cửa sổ")
     _print_windows(cfg)
+    _verify_prefix(cfg)
     print(f"\n   {tmux.HUB_PREFIX} <số>  đổi việc    {tmux.HUB_PREFIX} d  thoát (mọi thứ vẫn chạy)")
     print(f"   Ctrl-b là phím của tmux trên máy con, không đụng {tmux.HUB_PREFIX}")
     return _attach_or_stop(cfg, args)

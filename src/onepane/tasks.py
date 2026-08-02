@@ -110,7 +110,11 @@ def create_cmd(name: str, command: list[str] | None = None) -> str:
         # kết thúc, không để lại một shell rỗng trông như vẫn đang chạy.
         argv.append(shlex.quote("exec " + " ".join(shlex.quote(c) for c in command)))
     create = " ".join(argv)
-    return f"{CLIPBOARD_SETUP}; tmux has-session -t {sess} 2>/dev/null || {create}"
+    return (
+        f"{CLIPBOARD_SETUP}; "
+        f"(tmux has-session -t {sess} 2>/dev/null || {create}); "
+        f"{session_setup(sess)}"
+    )
 
 
 def kill_cmd(name: str) -> str:
@@ -124,14 +128,28 @@ def open_argv(ssh_prefix: list[str], name: str) -> list[str]:
     `new-session -A` = nối nếu đã có, tạo nếu chưa. Nên `open` một task chưa tồn
     tại vẫn chạy được thay vì báo lỗi rồi bắt gõ thêm lệnh tạo.
     """
-    sess = session_name(name)
-    # Đặt clipboard mỗi lần mở: task tạo bằng `open` (chưa qua `new`) vẫn phải
-    # copy được, và đây là lệnh rẻ, chạy lại bao nhiêu lần cũng không sao.
+    sess = shlex.quote(session_name(name))
+    # Tạo (nếu chưa có) -> đặt tuỳ chọn -> mới nối. Không dùng `new-session -A`
+    # gọn hơn được, vì `-A` nối ngay và không còn chỗ đặt tuỳ chọn trước đó.
     return [
         *ssh_prefix,
         "-t",
-        f"{CLIPBOARD_SETUP}; tmux new-session -A -s {shlex.quote(sess)}",
+        f"{CLIPBOARD_SETUP}; "
+        f"tmux has-session -t {sess} 2>/dev/null || tmux new-session -d -s {sess}; "
+        f"{session_setup(sess)}; "
+        f"tmux attach-session -t {sess}",
     ]
+
+
+def session_setup(quoted_session: str) -> str:
+    """Tuỳ chọn cho phiên task trên máy con.
+
+    Tắt thanh trạng thái của tmux bên trong: hub đã có thanh riêng ghi đủ việc
+    gì / máy nào, hai thanh chồng nhau chỉ tổ rối và ăn mất một dòng màn hình.
+    Đặt theo phiên chứ không đặt chung, để tmux sẵn có của bạn trên máy đó
+    không bị đụng.
+    """
+    return f"tmux set-option -t {quoted_session} status off 2>/dev/null"
 
 
 def resolve(tasks: list[Task], ref: str) -> Task:

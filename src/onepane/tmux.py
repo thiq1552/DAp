@@ -81,8 +81,13 @@ def session_option_commands(cfg: Config) -> list[list[str]]:
     # bị thay bằng "ssh" ngay khi kết nối. Mất nhãn thì bạn không biết cửa sổ
     # nào của máy nào, và `term` cũng không nhận ra cửa sổ nào đã có -> lần sau
     # nó thêm trùng. Khoá cả hai đường đổi tên.
-    cmds.append([*opt, "automatic-rename", "off"])
-    cmds.append([*opt, "allow-rename", "off"])
+    # `-wg`: đây là tuỳ chọn CỬA SỔ, không phải tuỳ chọn phiên. Đặt bằng
+    # `set-option -t <phiên>` sẽ lỗi hoặc chỉ trúng đúng cửa sổ hiện tại.
+    cmds.append(["tmux", "set-option", "-wg", "automatic-rename", "off"])
+    cmds.append(["tmux", "set-option", "-wg", "allow-rename", "off"])
+    # Xoá số cũ rồi đánh lại từ base-index, nếu không phiên dựng trước khi có
+    # base-index vẫn giữ cửa sổ số 0 và mọi hướng dẫn "bấm số 1" đều trỏ sai.
+    cmds.append([*opt, "renumber-windows", "on"])
     # Nhãn task khá dài; status-right mặc định (ngày giờ) chiếm chỗ và đẩy các
     # cửa sổ sau ra khỏi màn hình.
     cmds.append([*opt, "status-right", ""])
@@ -103,9 +108,10 @@ def session_option_commands(cfg: Config) -> list[list[str]]:
     cmds.append([*opt, "prefix", HUB_PREFIX])
     # Nhấn phím dẫn hai lần để gửi nó xuống ứng dụng bên trong.
     cmds.append(["tmux", "bind-key", "-T", "prefix", HUB_PREFIX, "send-prefix"])
-    # Nhãn cửa sổ là thứ duy nhất cho biết đang gõ vào máy nào — cho nó đủ chỗ.
-    cmds.append([*opt, "window-status-format", " #I #W "])
-    cmds.append([*opt, "window-status-current-format", " #I #W "])
+    # Cũng là tuỳ chọn cửa sổ: đặt theo phiên chỉ trúng cửa sổ đang mở, nên
+    # các cửa sổ khác giữ định dạng mặc định và trông không đồng nhất.
+    cmds.append(["tmux", "set-option", "-wg", "window-status-format", " #I #W "])
+    cmds.append(["tmux", "set-option", "-wg", "window-status-current-format", "[#I #W]"])
     cmds.append([*opt, "status-justify", "left"])
     return cmds
 
