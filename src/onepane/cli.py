@@ -12,7 +12,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import config as cfgmod
-from . import tmux, xpra
+from . import tasks, tmux, xpra
 from . import remote
 from .config import Config, ConfigError, Node
 from .remote import run, run_script, state_dir
@@ -434,6 +434,86 @@ def cmd_status(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------- term
 
 
+def _collect_tasks(cfg: Config, nodes: list[Node]) -> tuple[list[tasks.Task], list[str]]:
+    """Hỏi từng máy xem đang có task nào. Trả (task, danh sách máy không hỏi được)."""
+    found: list[tasks.Task] = []
+    offline: list[str] = []
+    for node in nodes:
+        res = run(node, cfg.hub, tasks.list_cmd(), timeout=15)
+        if not res.ok and not res.stdout.strip():
+            offline.append(node.name)
+            continue
+        found += tasks.parse_list(node.name, res.stdout)
+    return found, offline
+
+
+def cmd_task_ls(args: argparse.Namespace) -> int:
+    cfg = Config.load(_config_path(args))
+    nodes = cfg.select(args.nodes)
+    found, offline = _collect_tasks(cfg, nodes)
+
+    if not found:
+        print("Chưa có task nào.  Tạo: onepane task new <máy> <tên>")
+    else:
+        width = max(len(t.name) for t in found)
+        for t in sorted(found, key=lambda t: (t.node, t.name)):
+            mark = OK if t.attached else " "
+            print(f" {mark} {t.name:<{width}}  {t.node:<10} {t.windows} cửa sổ")
+        print(f"\n{OK} = đang mở ở đâu đó.  Mở: onepane task open <tên>")
+
+    for name in offline:
+        print(f"{WARN} {name}: không hỏi được (máy tắt?)")
+    return 0
+
+
+def cmd_task_new(args: argparse.Namespace) -> int:
+    cfg = Config.load(_config_path(args))
+    node = cfg.node(args.node)
+    name = tasks.validate(args.name)
+
+    res = run(node, cfg.hub, tasks.create_cmd(name, args.command), timeout=30)
+    if not res.ok:
+        err(f"{node.name}: {res.message}")
+        return 1
+    print(f"{OK} task '{name}' sẵn sàng trên {node.name}")
+    print(f"   Mở: onepane task open {name}")
+    return 0
+
+
+def cmd_task_open(args: argparse.Namespace) -> int:
+    cfg = Config.load(_config_path(args))
+    found, _ = _collect_tasks(cfg, cfg.select(None))
+
+    # Chưa có task tên đó mà người dùng nói rõ máy nào -> tạo luôn, đỡ một lệnh.
+    try:
+        task = tasks.resolve(found, args.name)
+    except tasks.TaskError:
+        if "/" not in args.name:
+            raise
+        node_name, _, name = args.name.partition("/")
+        node = cfg.node(node_name)
+        task = tasks.Task(node=node_name, name=tasks.validate(name), windows=1, attached=False)
+        print(f"{WARN} chưa có task này — tạo mới trên {node_name}")
+
+    node = cfg.node(task.node)
+    argv = tasks.open_argv(remote.ssh_command(node, cfg.hub), task.name)
+    return subprocess.run(argv).returncode
+
+
+def cmd_task_kill(args: argparse.Namespace) -> int:
+    cfg = Config.load(_config_path(args))
+    found, _ = _collect_tasks(cfg, cfg.select(None))
+    task = tasks.resolve(found, args.name)
+    node = cfg.node(task.node)
+
+    res = run(node, cfg.hub, tasks.kill_cmd(task.name), timeout=20)
+    if not res.ok:
+        err(f"{node.name}: {res.message}")
+        return 1
+    print(f"{OK} đã giết task '{task.name}' trên {task.node}")
+    return 0
+
+
 def cmd_term(args: argparse.Namespace) -> int:
     cfg = Config.load(_config_path(args))
     nodes = cfg.select(args.nodes)
@@ -445,14 +525,28 @@ def cmd_term(args: argparse.Namespace) -> int:
             print(f"{OK} nối vào phiên tmux '{cfg.hub.tmux_session}' đang có")
             return subprocess.run(tmux.attach_command(cfg)).returncode
 
-    for command in tmux.build_commands(cfg, nodes):
+    found, offline = _collect_tasks(cfg, nodes)
+    for name in offline:
+        print(f"{WARN} {name}: không hỏi được (máy tắt?) — vẫn tạo cửa sổ, nó sẽ tự nối lại")
+
+    windows: list[tuple[str, str]] = [
+        (t.label, tmux.task_window_command(t, cfg.node(t.node), cfg))
+        for t in sorted(found, key=lambda t: (t.node, t.name))
+    ]
+    # Máy chưa có task nào vẫn cần một cửa sổ shell để bạn vào làm việc.
+    for node in nodes:
+        if not any(t.node == node.name for t in found):
+            windows.append((node.name, tmux.shell_window_command(node, cfg)))
+
+    for command in tmux.build_commands(cfg, windows):
         res = subprocess.run(command, capture_output=True, text=True)
         if res.returncode != 0:
             err(f"tmux lỗi: {res.stderr.strip() or ' '.join(command)}")
             return 1
 
-    print(f"{OK} đã dựng phiên '{cfg.hub.tmux_session}' với {len(nodes)} cửa sổ")
-    print("   Ctrl-b <số>  đổi máy    Ctrl-b d  thoát (phiên vẫn chạy)")
+    print(f"{OK} phiên '{cfg.hub.tmux_session}': {len(windows)} cửa sổ")
+    print(f"   {tmux.HUB_PREFIX} <số>  đổi việc    {tmux.HUB_PREFIX} d  thoát (mọi thứ vẫn chạy)")
+    print(f"   Ctrl-b là phím của tmux trên máy con, không đụng {tmux.HUB_PREFIX}")
     return subprocess.run(tmux.attach_command(cfg)).returncode
 
 
@@ -519,7 +613,28 @@ def build_parser() -> argparse.ArgumentParser:
     _add_nodes_arg(s, "tên máy; bỏ trống = tất cả")
     s.set_defaults(func=cmd_status)
 
-    s = sub.add_parser("term", help="phiên tmux một cửa sổ mỗi máy")
+    s = sub.add_parser("task", help="terminal có tên, sống dai, ghim vào một máy")
+    tsub = s.add_subparsers(dest="task_cmd", required=True)
+
+    t = tsub.add_parser("ls", help="liệt kê task trên mọi máy")
+    _add_nodes_arg(t, "chỉ xem máy này; bỏ trống = tất cả")
+    t.set_defaults(func=cmd_task_ls)
+
+    t = tsub.add_parser("new", help="tạo task mới trên một máy")
+    t.add_argument("node", help="tên máy trong config")
+    t.add_argument("name", help="tên task, ví dụ: 'zalo quét'")
+    t.add_argument("command", nargs="*", help="lệnh chạy luôn; bỏ trống = shell rỗng")
+    t.set_defaults(func=cmd_task_new)
+
+    t = tsub.add_parser("open", help="mở terminal của task ngay tại đây")
+    t.add_argument("name", help="tên task, hoặc 'máy/tên' nếu trùng tên")
+    t.set_defaults(func=cmd_task_open)
+
+    t = tsub.add_parser("kill", help="giết task (mất mọi thứ đang chạy trong đó)")
+    t.add_argument("name", help="tên task, hoặc 'máy/tên'")
+    t.set_defaults(func=cmd_task_kill)
+
+    s = sub.add_parser("term", help="một cửa sổ cho mỗi task, gom về màn hình này")
     _add_nodes_arg(s, "tên máy; bỏ trống = tất cả")
     s.add_argument("--recreate", action="store_true", help="xoá phiên cũ rồi dựng lại")
     s.set_defaults(func=cmd_term)

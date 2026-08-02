@@ -1,9 +1,13 @@
-"""Một phiên tmux duy nhất, mỗi máy một cửa sổ.
+"""Màn hình tổng hợp trên hub: mỗi task một cửa sổ.
 
-Phần lớn công việc thật sự (Claude Code, build, log) là terminal — và với
-terminal thì tmux cho cảm giác "một máy" tốt hơn hẳn mọi thứ đồ hoạ: chuyển máy
-bằng một phím, không độ trễ vẽ hình, dùng được từ điện thoại qua Tailscale SSH,
-và phiên vẫn sống khi bạn ngắt kết nối.
+Phần lớn công việc thật sự (Claude Code, build, log, script chạy dài) là
+terminal — và với terminal thì tmux cho cảm giác "một máy" tốt hơn hẳn mọi thứ
+đồ hoạ: chuyển việc bằng một phím, không độ trễ vẽ hình, dùng được từ điện
+thoại qua Tailscale SSH, và mọi thứ vẫn sống khi bạn ngắt kết nối.
+
+Có hai tầng tmux: tầng ngoài trên hub (gom cửa sổ) và tầng trong trên từng máy
+con (giữ tiến trình sống). Để hai tầng không tranh phím, tầng ngoài đổi phím
+dẫn sang `Ctrl-a`, tầng trong giữ nguyên `Ctrl-b` mặc định.
 """
 
 from __future__ import annotations
@@ -12,40 +16,77 @@ import shlex
 
 from .config import Config, Node
 from .remote import ssh_command
+from .tasks import Task, open_argv
+
+# Phím dẫn của tầng ngoài. Khác mặc định để không đụng tmux trên máy con.
+HUB_PREFIX = "C-a"
 
 
-def _window_command(node: Node, cfg: Config) -> str:
-    """Lệnh ssh cho một cửa sổ, có vòng lặp thử lại khi máy đang tắt."""
-    ssh = " ".join(shlex.quote(a) for a in ssh_command(node, cfg.hub))
-    # Máy con tắt/ngủ thì cửa sổ không biến mất — nó chờ và tự nối lại. Đây là
-    # điểm khác biệt so với `tmux new-window ssh ...` trần: cửa sổ đó sẽ đóng
-    # ngay khi ssh thoát và bạn mất luôn vị trí trong phiên.
+def _quote(argv: list[str]) -> str:
+    return " ".join(shlex.quote(a) for a in argv)
+
+
+def _resilient(inner: str, label: str) -> str:
+    """Bọc lệnh trong vòng lặp thử lại khi máy con tắt hoặc rớt mạng.
+
+    Không có lớp này thì `tmux new-window ssh ...` đóng cửa sổ ngay khi ssh
+    thoát — mất luôn vị trí trong phiên, và mất cả nhãn cho biết đó là việc gì.
+    """
     return (
-        f"while true; do {ssh}; "
-        f'echo; echo "[onepane] mất kết nối tới {node.name} — Enter để thử lại, Ctrl-C để đóng"; '
+        f"while true; do {inner}; "
+        f'echo; echo "[onepane] mất kết nối: {label} — Enter để nối lại, Ctrl-C để đóng"; '
         f"read -r || exit 0; done"
     )
 
 
-def build_commands(cfg: Config, nodes: list[Node]) -> list[list[str]]:
-    """Danh sách lệnh tmux cần chạy để dựng phiên. Trả về để test được."""
+def task_window_command(task: Task, node: Node, cfg: Config) -> str:
+    """Lệnh cho một cửa sổ: ssh vào máy con rồi bám vào phiên tmux của task."""
+    ssh = ssh_command(node, cfg.hub)
+    return _resilient(_quote(open_argv(ssh, task.name)), task.label)
+
+
+def shell_window_command(node: Node, cfg: Config) -> str:
+    """Cửa sổ shell trần cho một máy — dùng khi máy đó chưa có task nào."""
+    return _resilient(_quote(ssh_command(node, cfg.hub)), f"shell {node.name}")
+
+
+def build_commands(cfg: Config, windows: list[tuple[str, str]]) -> list[list[str]]:
+    """Dựng phiên tmux của hub. `windows` là danh sách (nhãn, lệnh).
+
+    Trả về danh sách lệnh thay vì tự chạy để test được mà không cần tmux thật.
+    """
     session = cfg.hub.tmux_session
     cmds: list[list[str]] = []
 
-    first, rest = nodes[0], nodes[1:]
+    (first_label, first_cmd), rest = windows[0], windows[1:]
     cmds.append(
-        ["tmux", "new-session", "-d", "-s", session, "-n", first.name,
-         _window_command(first, cfg)]
+        ["tmux", "new-session", "-d", "-s", session, "-n", first_label, first_cmd]
     )
-    for node in rest:
-        cmds.append(
-            ["tmux", "new-window", "-t", session, "-n", node.name,
-             _window_command(node, cfg)]
-        )
+    for label, command in rest:
+        cmds.append(["tmux", "new-window", "-t", session, "-n", label, command])
 
-    cmds.append(["tmux", "set-option", "-t", session, "mouse", "on"])
-    # Đánh số cửa sổ từ 1 để khớp với hàng phím số trên bàn phím.
-    cmds.append(["tmux", "set-option", "-t", session, "base-index", "1"])
+    opt = ["tmux", "set-option", "-t", session]
+    cmds.append([*opt, "mouse", "on"])
+    # Tầng ngoài cũng phải cho OSC 52 đi qua, nếu không chuỗi từ máy con dừng
+    # ở đây và clipboard của hub không bao giờ nhận được gì. Đây là tuỳ chọn
+    # cấp server (-s) nên không gắn với phiên nào.
+    cmds.append(["tmux", "set-option", "-s", "set-clipboard", "on"])
+    cmds.append(["tmux", "set-option", "-as", "terminal-features", ",*:clipboard"])
+    # Bôi đen bằng chuột xong nhả tay là copy luôn, khỏi phải nhớ phím.
+    cmds.append(
+        ["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane",
+         "send-keys", "-X", "copy-pipe-and-cancel"]
+    )
+    # Đánh số từ 1 để khớp hàng phím số trên bàn phím.
+    cmds.append([*opt, "base-index", "1"])
+    cmds.append([*opt, "prefix", HUB_PREFIX])
+    # Nhấn phím dẫn hai lần để gửi nó xuống ứng dụng bên trong.
+    cmds.append(["tmux", "bind-key", "-T", "prefix", HUB_PREFIX, "send-prefix"])
+    # Thanh trạng thái nói rõ đang ở cửa sổ nào, vì đó là thứ phân biệt máy.
+    cmds.append([*opt, "status-left", " onepane "])
+    cmds.append([*opt, "status-left-length", "12"])
+    cmds.append([*opt, "window-status-format", " #I #W "])
+    cmds.append([*opt, "window-status-current-format", " #I #W "])
     cmds.append(["tmux", "select-window", "-t", f"{session}:1"])
     return cmds
 

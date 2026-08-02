@@ -39,17 +39,63 @@ Thêm hai thứ đi kèm:
   `linger` nên sống qua cả lần khởi động lại máy.
 - **Clipboard dùng chung.** Copy ở máy này, dán ở máy kia, không cần nghĩ.
 
-## Và phần quan trọng hơn: terminal
+## Và phần quan trọng hơn: task
 
 Nếu phần lớn việc bạn làm là Claude Code, build, đọc log — tức là terminal —
-thì `onepane term` mới là thứ bạn dùng hàng ngày, không phải cửa sổ đồ hoạ.
+thì **task** mới là thứ bạn dùng hàng ngày, không phải cửa sổ đồ hoạ.
 
-Nó dựng **một phiên tmux, mỗi máy một cửa sổ**. `Ctrl-b 1/2/3` để nhảy máy,
-gần như tức thời vì chỉ có text đi qua mạng. Phiên sống khi bạn ngắt kết nối,
-và mở lại được từ điện thoại qua Tailscale SSH.
+Một task là một terminal **có tên**, chạy trên **một máy cố định**, và **không
+chết khi bạn ngắt kết nối**. Bên dưới nó là một phiên tmux tên `op-<tên>` nằm
+trên chính máy con.
+
+```bash
+onepane task new may-nha "zalo quét"   # tạo
+onepane task ls                        # có gì, ở máy nào
+onepane task open "zalo quét"          # mở terminal của nó ngay tại đây
+onepane term                           # gom MỌI task về một màn hình
+```
+
+Ba tính chất suy ra từ thiết kế, không phải tính năng thêm vào:
+
+- **Task không bao giờ đổi máy.** Phiên nằm ở máy nào thì chạy ở máy đó. Việc
+  như quét Zalo bằng trình duyệt đã đăng nhập sẵn không thể bị kéo sang máy
+  khác làm mất phiên — vì chẳng có gì bị kéo đi cả.
+- **Task không chết khi mất kết nối.** Rớt mạng, đóng laptop, tắt hẳn máy hub —
+  tiến trình vẫn chạy tiếp. Nối lại là thấy đúng chỗ đang dở.
+- **Không có sổ ghi chép nào để lệch.** `task ls` hỏi thẳng `tmux ls` của từng
+  máy, nên danh sách luôn đúng thực tế.
+
+### Clipboard chảy giữa các máy
+
+Đây là chỗ cần một lớp kỹ thuật, không tự nhiên chạy.
+
+**Dán vào** thì luôn được — dán là gõ phím, đi qua ssh như mọi phím khác.
+**Copy ra** mới khó: chữ trên màn hình do tmux của *máy con* vẽ, nên bôi đen chỉ
+vào bộ đệm của tmux đó, không tới clipboard máy bạn đang ngồi.
+
+`onepane` bật **OSC 52** ở cả hai tầng tmux: nội dung đã copy được gói vào một
+escape sequence, chảy ngược qua ssh về terminal trên hub, terminal đặt vào
+clipboard hệ thống. Nhờ vậy copy kết quả từ task máy này, dán thẳng vào task máy
+kia — y như chạy nhiều terminal trên cùng một máy.
+
+Cần terminal hiểu OSC 52 (VTE 0.64+, tức GNOME Terminal trên Ubuntu 22.04 trở
+lên). Terminal quá cũ thì mọi thứ vẫn chạy, chỉ riêng copy không sang.
+
+### Hai tầng tmux, hai phím dẫn
+
+`onepane term` dựng tmux trên hub để gom cửa sổ, trong khi mỗi task đã là một
+tmux trên máy con. Hai tầng cùng phím `Ctrl-b` thì tầng trong không nhận được gì,
+nên tầng ngoài đổi sang **`Ctrl-a`**:
+
+| Phím | Tác dụng |
+|---|---|
+| `Ctrl-a` `1`/`2`/`3` | đổi task |
+| `Ctrl-a` `d` | thoát màn hình gom (mọi thứ vẫn chạy) |
+| `Ctrl-b` | tmux của máy con — chia pane, cuộn log |
+| `Ctrl-a` `Ctrl-a` | gửi `Ctrl-a` xuống ứng dụng bên trong |
 
 Cửa sổ nào cũng tự nối lại nếu máy con tắt hay ngủ — nó chờ và thử lại chứ không
-biến mất kéo theo vị trí của bạn trong phiên.
+biến mất kéo theo vị trí của bạn.
 
 ## Cài
 

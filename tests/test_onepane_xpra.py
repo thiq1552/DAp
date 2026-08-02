@@ -1,4 +1,4 @@
-from onepane import tmux, xpra
+from onepane import tasks, tmux, xpra
 from onepane.config import Config, Hub, Node
 from onepane.remote import ssh_command
 
@@ -223,18 +223,34 @@ def test_ssh_command_is_non_interactive():
     assert "BatchMode=yes" in ssh_command(VIVO, Hub())
 
 
-def test_tmux_builds_one_window_per_node():
-    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[VIVO, Node(name="acer", host="acer")])
-    cmds = tmux.build_commands(cfg, cfg.nodes)
+def test_tmux_builds_one_window_per_entry():
+    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[VIVO])
+    cmds = tmux.build_commands(cfg, [("zalo quét · may-nha", "echo a"), ("acer", "echo b")])
 
     assert cmds[0][:6] == ["tmux", "new-session", "-d", "-s", "cum", "-n"]
-    assert cmds[0][6] == "vivo"
+    assert cmds[0][6] == "zalo quét · may-nha"
     assert cmds[1][:6] == ["tmux", "new-window", "-t", "cum", "-n", "acer"]
 
 
 def test_tmux_window_reconnects_instead_of_closing():
     cfg = Config(hub=Hub(), nodes=[VIVO])
-    body = tmux.build_commands(cfg, cfg.nodes)[0][-1]
-    # Máy con tắt thì cửa sổ phải chờ và thử lại, không được biến mất.
+    body = tmux.shell_window_command(VIVO, cfg)
+    # Máy con tắt thì cửa sổ phải chờ và nối lại, không được biến mất.
     assert body.startswith("while true; do")
-    assert "thử lại" in body
+    assert "nối lại" in body
+
+
+def test_tmux_task_window_attaches_to_remote_session():
+    cfg = Config(hub=Hub(), nodes=[VIVO])
+    task = tasks.Task(node="vivo", name="zalo quét", windows=1, attached=False)
+    body = tmux.task_window_command(task, VIVO, cfg)
+    assert "new-session -A -s" in body
+    assert "op-zalo quét" in body
+
+
+def test_hub_prefix_differs_from_inner_tmux():
+    """Hai tầng tmux cùng phím dẫn thì tầng trong không nhận được phím nào."""
+    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[VIVO])
+    cmds = tmux.build_commands(cfg, [("x", "echo a")])
+    assert ["tmux", "set-option", "-t", "cum", "prefix", "C-a"] in cmds
+    assert tmux.HUB_PREFIX != "C-b"
