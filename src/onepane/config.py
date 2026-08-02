@@ -205,7 +205,10 @@ tmux_session = onepane
 # {node} được thay bằng tên máy. Để trống nếu xpra bản cũ không hiểu @title@.
 title_format = @title@ · {node}
 
-# Tuỳ chọn thêm cho `xpra attach`, ví dụ: --opengl=no --speaker=off
+# Tuỳ chọn thêm cho `xpra attach`. Âm thanh mặc định TẮT cả hai chiều để tránh
+# vòng lặp hú giữa micro và loa. Muốn nghe tiếng từ máy con thì bật loa thôi,
+# đừng bật micro cùng lúc:
+#   attach_opts = --speaker=on
 attach_opts =
 
 # Dùng lại một kết nối ssh cho nhiều lệnh (nhanh hơn nhiều khi chạy doctor/status).

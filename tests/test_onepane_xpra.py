@@ -41,6 +41,26 @@ def test_format_version():
     assert xpra.format_version(None) == "?"
 
 
+def test_attach_disables_audio_by_default():
+    """Bật cả loa lẫn micro thì micro thu tiếng loa -> hú. Mặc định phải tắt."""
+    argv = xpra.attach_argv(Node(name="vivo", host="thi-pc"), Hub())
+    assert "--speaker=off" in argv
+    assert "--microphone=off" in argv
+
+
+def test_attach_opts_can_re_enable_speaker():
+    """Tắt mặc định nhưng không được khoá cứng — attach_opts đứng sau nên thắng."""
+    argv = xpra.attach_argv(
+        Node(name="vivo", host="thi-pc"), Hub(attach_opts=["--speaker=on"])
+    )
+    assert argv.index("--speaker=on") > argv.index("--speaker=off")
+
+
+def test_server_does_not_start_pulseaudio():
+    cmd = xpra.start_server_cmd(Node(name="vivo", host="thi-pc"))
+    assert "--pulseaudio=no" in cmd
+
+
 def test_parse_probe_detects_missing_xpra():
     """Lỗi thật: máy chưa cài xpra nhưng doctor báo '✓ xpra ?'.
 

@@ -21,7 +21,17 @@ SERVER_OPTS = [
     "--sharing=yes",
     "--exit-with-children=no",
     "--notifications=yes",
+    # Không dựng pulseaudio trong phiên: không có nguồn phát thì không có gì để
+    # vọng lại, và đỡ một tiến trình chạy không công trên máy con.
+    "--pulseaudio=no",
+    "--speaker=off",
+    "--microphone=off",
 ]
+
+# Chuyển tiếp cả loa lẫn micro cùng lúc tạo vòng lặp: micro của hub thu tiếng
+# loa của chính nó, đẩy sang máy con, máy con phát ngược lại -> hú như để mic
+# gần loa. Mặc định tắt cả hai; ai cần thì bật lại qua `attach_opts` trong config.
+AUDIO_OFF = ["--speaker=off", "--microphone=off"]
 
 
 @dataclass(frozen=True)
@@ -194,5 +204,7 @@ def attach_argv(node: Node, hub: Hub) -> list[str]:
     argv = ["xpra", "attach", node.xpra_uri()]
     if hub.title_format:
         argv.append("--title=" + hub.title_format.format(node=node.name))
+    # Tắt âm thanh mặc định, đặt TRƯỚC attach_opts để người dùng bật lại được.
+    argv += AUDIO_OFF
     argv += hub.attach_opts
     return argv
