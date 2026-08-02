@@ -35,7 +35,20 @@ if [ -f /etc/apt/sources.list.d/xpra.sources ]; then
 elif [ -n "$CODENAME" ]; then
   REPO_URL="https://raw.githubusercontent.com/Xpra-org/xpra/master/packaging/repos/$CODENAME/xpra.sources"
   say "thêm kho chính chủ xpra cho $CODENAME"
-  sudo -n true 2>/dev/null || { echo "LỖI: cần sudo không mật khẩu để cài gói" >&2; exit 1; }
+  # Không dùng sudo tương tác được: với máy con thì stdin đã là chính script này
+  # (chạy qua `ssh bash -s`), còn ssh lại ở BatchMode. Nên yêu cầu quyền sudo đã
+  # sẵn sàng từ trước — `sudo -v` nhớ trong ~15 phút là đủ cho hub.
+  if ! sudo -n true 2>/dev/null; then
+    echo "LỖI: chưa có quyền sudo." >&2
+    if [ "$ROLE" = "hub" ]; then
+      echo "      Chạy 'sudo -v' rồi chạy lại lệnh này." >&2
+    else
+      echo "      Máy con cần sudo không mật khẩu (onepane chạy không tương tác)." >&2
+      echo "      Thêm dòng sau vào 'sudo visudo' trên máy đó:" >&2
+      echo "        $USER ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/wget, /usr/bin/loginctl" >&2
+    fi
+    exit 1
+  fi
   sudo apt-get install -y -qq wget ca-certificates >/dev/null
   sudo wget -qO /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc
   # Kho không có codename này (bản Ubuntu quá mới/quá cũ) -> dùng gói của distro.
