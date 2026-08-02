@@ -5,18 +5,20 @@ Hệ thống nối bốn máy của một người thành một chỗ làm việ
 
 **Người dùng nói tiếng Việt. Trả lời bằng tiếng Việt.**
 
-## Đọc HANDOFF.md trước
+## Bàn giao giữa các phiên
 
-Nếu có `HANDOFF.md`, **đọc nó trước khi làm gì khác**. Đó là bàn giao từ phiên
-gần nhất: đang làm dở tới đâu, cái gì đã xác nhận chạy trên phần cứng thật, cái
-gì chưa, và những lỗi đã sửa rồi để không lặp lại.
+Thư mục `handoffs/` chứa các mạch việc đang mở, **mỗi mạch việc một file**. Mỗi
+file ghi: đang dở tới đâu, cái gì đã xác nhận chạy trên phần cứng thật, cái gì
+chưa, và những lỗi đã sửa rồi để không lặp lại.
+
+Người dùng nói "làm tiếp" → xem `handoffs/`. Có nhiều file thì **hỏi chọn cái
+nào**, đừng tự đoán: chọn nhầm mạch việc là sửa nhầm thứ. Dùng `/tieptuc` để
+làm đúng trình tự này, và `/handoff` khi bàn giao đi.
 
 Phiên chạy trên claude.ai không gõ được vào máy người dùng, nên nó thiết kế và
-viết code rồi bàn giao qua file này. Phiên chạy tại chỗ (`claude` trong terminal)
-chạy lệnh thật được — hãy tự chạy và tự đọc kết quả, đừng bắt người dùng
-copy/paste.
-
-Làm xong một chặng thì **cập nhật lại `HANDOFF.md`** cho phiên sau.
+viết code rồi bàn giao qua thư mục này. Phiên chạy tại chỗ (`claude` trong
+terminal) chạy lệnh thật được — hãy tự chạy và tự đọc kết quả, đừng bắt người
+dùng copy/paste.
 
 ## Hai thành phần
 

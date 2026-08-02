@@ -1,4 +1,11 @@
-# Bàn giao — tiếp tục onepane từ phiên Claude chạy tại chỗ
+---
+chu-de: onepane — gom terminal nhiều máy về một màn hình
+may: may-cty
+trang-thai: đang làm
+cap-nhat: 2026-08-02
+---
+
+# onepane — bàn giao cho phiên chạy tại chỗ
 
 Bạn đang chạy trên **may-cty** (hub). Phiên trước làm việc từ xa nên mọi lệnh
 phải nhờ người dùng copy/paste — chậm và dễ sai. Bạn chạy được lệnh trực tiếp,
