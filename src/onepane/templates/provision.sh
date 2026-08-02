@@ -51,8 +51,10 @@ elif [ -n "$CODENAME" ]; then
   fi
   sudo apt-get install -y -qq wget ca-certificates >/dev/null
   sudo wget -qO /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc
+  # Hỏi trước bằng --spider thay vì tải rồi xoá: dọn dẹp cần `sudo rm`, mà mở
+  # NOPASSWD cho `rm` thì rộng tay một cách không cần thiết.
   # Kho không có codename này (bản Ubuntu quá mới/quá cũ) -> dùng gói của distro.
-  if sudo wget -qO /etc/apt/sources.list.d/xpra.sources "$REPO_URL"; then
+  if wget -q --spider "$REPO_URL" && sudo wget -qO /etc/apt/sources.list.d/xpra.sources "$REPO_URL"; then
     say "đã thêm kho xpra"
     sudo apt-get update -qq
     # Gói distro đã cài sẵn thì phải nâng lên bản của kho mới, `install` không tự làm.
@@ -61,7 +63,6 @@ elif [ -n "$CODENAME" ]; then
       sudo apt-get install -y -qq --only-upgrade xpra || true
     fi
   else
-    sudo rm -f /etc/apt/sources.list.d/xpra.sources
     say "CẢNH BÁO: kho xpra chưa hỗ trợ '$CODENAME', dùng gói sẵn trong Ubuntu (bản cũ hơn)"
   fi
 fi
