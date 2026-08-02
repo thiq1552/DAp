@@ -521,7 +521,26 @@ def _task_windows(cfg: Config, found: list[tasks.Task]) -> list[tuple[str, str]]
     ]
 
 
-def _sync_existing_session(cfg: Config, nodes: list[Node]) -> int:
+def _print_windows(cfg: Config) -> None:
+    """Danh sách cửa sổ thật, để đối chiếu thay vì đoán qua thanh trạng thái."""
+    res = subprocess.run(tmux.list_windows_command(cfg), capture_output=True, text=True)
+    for i, name in enumerate([n for n in res.stdout.splitlines() if n.strip()], 1):
+        print(f"   {i}. {name.strip()}")
+
+
+def _attach_or_stop(cfg: Config, args: argparse.Namespace) -> int:
+    """Vào tmux, hoặc dừng lại nếu người dùng chỉ muốn xem.
+
+    `tmux attach` chiếm màn hình ngay, nuốt sạch những gì vừa in — nên phải có
+    đường xem kết quả mà không vào.
+    """
+    if args.no_attach:
+        print(f"\n   Vào xem: onepane term")
+        return 0
+    return subprocess.run(tmux.attach_command(cfg)).returncode
+
+
+def _sync_existing_session(cfg: Config, nodes: list[Node], args: argparse.Namespace) -> int:
     """Bổ sung cửa sổ cho task mới vào phiên đang chạy, rồi nối vào.
 
     Task tạo sau khi `term` đã dựng thì phải tự xuất hiện. Bắt người dùng nhớ
@@ -559,14 +578,8 @@ def _sync_existing_session(cfg: Config, nodes: list[Node]) -> int:
     else:
         print(f"{OK} nối vào phiên '{session}' đang có")
 
-    # In danh sách thật để bạn đối chiếu, không phải đoán qua thanh trạng thái
-    # (nó cắt bớt khi nhãn dài).
-    final = subprocess.run(tmux.list_windows_command(cfg), capture_output=True, text=True)
-    for i, name in enumerate(final.stdout.split("\n"), 1):
-        if name.strip():
-            print(f"   {i}. {name.strip()}")
-
-    return subprocess.run(tmux.attach_command(cfg)).returncode
+    _print_windows(cfg)
+    return _attach_or_stop(cfg, args)
 
 
 def cmd_term(args: argparse.Namespace) -> int:
@@ -577,7 +590,7 @@ def cmd_term(args: argparse.Namespace) -> int:
         if args.recreate:
             subprocess.run(tmux.kill_session_command(cfg), capture_output=True)
         else:
-            return _sync_existing_session(cfg, nodes)
+            return _sync_existing_session(cfg, nodes, args)
 
     found, offline = _collect_tasks(cfg, nodes)
     for name in offline:
@@ -596,9 +609,10 @@ def cmd_term(args: argparse.Namespace) -> int:
             return 1
 
     print(f"{OK} phiên '{cfg.hub.tmux_session}': {len(windows)} cửa sổ")
-    print(f"   {tmux.HUB_PREFIX} <số>  đổi việc    {tmux.HUB_PREFIX} d  thoát (mọi thứ vẫn chạy)")
+    _print_windows(cfg)
+    print(f"\n   {tmux.HUB_PREFIX} <số>  đổi việc    {tmux.HUB_PREFIX} d  thoát (mọi thứ vẫn chạy)")
     print(f"   Ctrl-b là phím của tmux trên máy con, không đụng {tmux.HUB_PREFIX}")
-    return subprocess.run(tmux.attach_command(cfg)).returncode
+    return _attach_or_stop(cfg, args)
 
 
 # --------------------------------------------------------------------- main
@@ -688,6 +702,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("term", help="một cửa sổ cho mỗi task, gom về màn hình này")
     _add_nodes_arg(s, "tên máy; bỏ trống = tất cả")
     s.add_argument("--recreate", action="store_true", help="xoá phiên cũ rồi dựng lại")
+    s.add_argument(
+        "--no-attach",
+        action="store_true",
+        help="chỉ dựng và in danh sách, không vào tmux (vào là mất phần in ra)",
+    )
     s.set_defaults(func=cmd_term)
 
     return p
