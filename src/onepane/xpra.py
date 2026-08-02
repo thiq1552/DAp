@@ -126,8 +126,52 @@ def list_cmd() -> str:
     return "xpra list 2>&1 || true"
 
 
-def version_cmd() -> str:
-    return "xpra --version 2>&1 | head -1"
+# Không dùng mã thoát để đoán "xpra có chưa": `xpra --version | head -1` trả về
+# mã thoát của `head` (luôn 0) nên máy chưa cài xpra vẫn báo thành công. Thay
+# vào đó in ra dấu hiệu rõ ràng và đọc dấu hiệu ấy.
+MARK_MISSING = "ONEPANE_NO_XPRA"
+MARK_VERSION = "ONEPANE_XPRA "
+MARK_SESSIONS = "ONEPANE_SESSIONS"
+
+
+def probe_cmd() -> str:
+    """Một lần ssh lấy cả: xpra có chưa, bản nào, đang có phiên gì."""
+    return (
+        f"if command -v xpra >/dev/null 2>&1; then "
+        f'echo "{MARK_VERSION}$(xpra --version 2>&1 | head -1)"; '
+        f"echo {MARK_SESSIONS}; xpra list 2>&1 || true; "
+        f"else echo {MARK_MISSING}; fi"
+    )
+
+
+@dataclass(frozen=True)
+class Probe:
+    installed: bool
+    version: tuple[int, ...] | None
+    sessions: str  # phần thô của `xpra list`, để session_state() đọc
+
+
+def parse_probe(output: str) -> Probe:
+    """Đọc output của probe_cmd()."""
+    if MARK_MISSING in output or MARK_VERSION not in output:
+        return Probe(installed=False, version=None, sessions="")
+
+    version_line = ""
+    sessions: list[str] = []
+    in_sessions = False
+    for line in output.splitlines():
+        if line.startswith(MARK_VERSION):
+            version_line = line[len(MARK_VERSION) :]
+        elif line.strip() == MARK_SESSIONS:
+            in_sessions = True
+        elif in_sessions:
+            sessions.append(line)
+
+    return Probe(
+        installed=True,
+        version=parse_version(version_line),
+        sessions="\n".join(sessions),
+    )
 
 
 def launch_app_cmd(node: Node, argv: list[str]) -> str:

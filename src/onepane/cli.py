@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from importlib import resources
 from pathlib import Path
 
@@ -19,6 +20,9 @@ from .remote import run, run_script, state_dir
 OK = "✓"
 BAD = "✗"
 WARN = "!"
+
+# Đợi trước khi kết luận client xpra nối được: nối hụt thì nó thoát gần như ngay.
+ATTACH_SETTLE_S = 2.0
 
 
 def err(msg: str) -> None:
@@ -76,15 +80,13 @@ def _probe(node: Node, cfg: Config) -> dict[str, object]:
         return info
     info["reachable"] = True
 
-    ver = run(node, cfg.hub, xpra.version_cmd(), timeout=15)
-    info["xpra_version"] = xpra.parse_version(ver.stdout) if ver.ok else None
-    info["xpra_installed"] = bool(ver.ok and ver.stdout.strip())
-
-    if info["xpra_installed"]:
-        listing = run(node, cfg.hub, xpra.list_cmd(), timeout=15)
-        info["session"] = xpra.session_state(listing.stdout, node.display)
-    else:
-        info["session"] = "NONE"
+    probe = run(node, cfg.hub, xpra.probe_cmd(), timeout=20)
+    parsed = xpra.parse_probe(probe.stdout)
+    info["xpra_installed"] = parsed.installed
+    info["xpra_version"] = parsed.version
+    info["session"] = (
+        xpra.session_state(parsed.sessions, node.display) if parsed.installed else "NONE"
+    )
     return info
 
 
@@ -145,7 +147,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
         version = info["xpra_version"]
         label = xpra.format_version(version)
-        if version and version[0] < 4:
+        if version is None:
+            # Có lệnh xpra nhưng không đọc nổi phiên bản -> đừng báo xanh.
+            print(f"  {WARN} xpra: có cài nhưng không đọc được phiên bản")
+            failed += 1
+        elif version[0] < 4:
             print(f"  {WARN} xpra {label} — bản cũ trong kho Ubuntu, nên nâng: onepane setup {node.name}")
         else:
             print(f"  {OK} xpra {label}")
@@ -228,11 +234,21 @@ def cmd_up(args: argparse.Namespace) -> int:
             print(f"{OK} {node.name}: phiên {node.display} đã chạy sẵn")
             continue
         res = run(node, cfg.hub, xpra.start_server_cmd(node), timeout=60)
-        if res.ok:
+        if not res.ok:
+            failed += 1
+            print(f"{BAD} {node.name}: {res.message}")
+            continue
+
+        # `xpra start --daemon=yes` trả 0 ngay khi tách tiến trình, trước khi
+        # biết server có trụ được không. Hỏi lại mới chắc.
+        recheck = run(node, cfg.hub, xpra.list_cmd(), timeout=20)
+        if xpra.session_state(recheck.stdout, node.display) == "LIVE":
             print(f"{OK} {node.name}: đã dựng phiên {node.display}")
         else:
             failed += 1
-            print(f"{BAD} {node.name}: {res.message}")
+            print(f"{BAD} {node.name}: phiên {node.display} không trụ được sau khi dựng")
+            for line in (res.stdout + res.stderr).strip().splitlines()[-3:]:
+                print(f"      {line.strip()}")
     return 1 if failed else 0
 
 
@@ -259,6 +275,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         err("thiếu lệnh cần chạy. Ví dụ: onepane run vivo firefox")
         return 2
 
+    # Kiểm tra phiên trước: `launch_app_cmd` có nhánh dự phòng chạy nền nên gần
+    # như luôn trả 0, kể cả khi không có phiên nào để mở app vào.
+    state, problem = _require_live_session(node, cfg)
+    if problem:
+        err(f"{node.name}: {problem}")
+        return 1
+
     res = run(node, cfg.hub, xpra.launch_app_cmd(node, args.command), timeout=30)
     if not res.ok:
         err(f"{node.name}: {res.message}")
@@ -270,6 +293,31 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 # ------------------------------------------------------------------- attach
+
+
+def _require_live_session(node: Node, cfg: Config) -> tuple[str, str | None]:
+    """(trạng thái phiên, lý do không dùng được). Lý do None nghĩa là sẵn sàng."""
+    probe = run(node, cfg.hub, xpra.probe_cmd(), timeout=20)
+    if not probe.ok and not probe.stdout.strip():
+        return "UNKNOWN", f"không hỏi được máy này: {probe.message}"
+
+    parsed = xpra.parse_probe(probe.stdout)
+    if not parsed.installed:
+        return "NONE", f"chưa cài xpra  →  onepane setup {node.name}"
+
+    state = xpra.session_state(parsed.sessions, node.display)
+    if state != "LIVE":
+        return state, f"chưa có phiên {node.display}  →  onepane up {node.name}"
+    return state, None
+
+
+def _tail(path: Path, count: int) -> list[str]:
+    """Vài dòng cuối của file log, bỏ dòng trống."""
+    try:
+        lines = [ln.strip() for ln in path.read_text(errors="replace").splitlines()]
+    except OSError:
+        return []
+    return [ln for ln in lines if ln][-count:]
 
 
 def _pid_file(node: Node) -> Path:
@@ -292,10 +340,19 @@ def _attach_pid(node: Node) -> int | None:
 
 def cmd_attach(args: argparse.Namespace) -> int:
     cfg = Config.load(_config_path(args))
+    failed = 0
 
     for node in cfg.select(args.nodes):
         if _attach_pid(node):
             print(f"{OK} {node.name}: đã nối sẵn")
+            continue
+
+        # Nối vào phiên không tồn tại thì client chết ngay sau khi Popen trả về.
+        # Hỏi trước để báo đúng việc cần làm thay vì in ✓ rồi để bạn tự phát hiện.
+        _, problem = _require_live_session(node, cfg)
+        if problem:
+            print(f"{BAD} {node.name}: {problem}")
+            failed += 1
             continue
 
         argv = xpra.attach_argv(node, cfg.hub)
@@ -313,10 +370,21 @@ def cmd_attach(args: argparse.Namespace) -> int:
             err("không tìm thấy `xpra` trên máy này — cài xpra cho máy hub trước")
             return 1
 
-        _pid_file(node).write_text(str(proc.pid))
-        print(f"{OK} {node.name}: đang nối (pid {proc.pid}, log {log})")
+        # Client xpra hỏng thì chết trong khoảng một giây; đợi rồi kiểm tra lại
+        # mới biết là nối được thật hay chỉ mới sinh ra tiến trình.
+        time.sleep(ATTACH_SETTLE_S)
+        if proc.poll() is not None:
+            failed += 1
+            print(f"{BAD} {node.name}: client thoát ngay (mã {proc.returncode})")
+            for line in _tail(log, 3):
+                print(f"      {line}")
+            print(f"      log đầy đủ: {log}")
+            continue
 
-    return 0
+        _pid_file(node).write_text(str(proc.pid))
+        print(f"{OK} {node.name}: đã nối (pid {proc.pid})")
+
+    return 1 if failed else 0
 
 
 def cmd_detach(args: argparse.Namespace) -> int:

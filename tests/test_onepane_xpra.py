@@ -41,6 +41,53 @@ def test_format_version():
     assert xpra.format_version(None) == "?"
 
 
+def test_parse_probe_detects_missing_xpra():
+    """Lỗi thật: máy chưa cài xpra nhưng doctor báo '✓ xpra ?'.
+
+    Nguyên nhân cũ là `xpra --version | head -1` — mã thoát của `head` luôn 0
+    nên không thể dùng nó để suy ra đã cài hay chưa.
+    """
+    p = xpra.parse_probe("ONEPANE_NO_XPRA\n")
+    assert p.installed is False
+    assert p.version is None
+    assert p.sessions == ""
+
+
+def test_parse_probe_treats_shell_error_as_missing():
+    # Nếu vì lý do gì đó chỉ nhận được lời than của shell, tuyệt đối không
+    # được coi là đã cài.
+    p = xpra.parse_probe("/bin/bash: line 1: xpra: command not found\n")
+    assert p.installed is False
+
+
+def test_parse_probe_reads_version_and_sessions():
+    out = (
+        "ONEPANE_XPRA xpra v6.5.2-r0\n"
+        "ONEPANE_SESSIONS\n"
+        "Found the following xpra sessions:\n"
+        "\tLIVE session at :100\n"
+        "\tDEAD session at :7\n"
+    )
+    p = xpra.parse_probe(out)
+    assert p.installed is True
+    assert p.version == (6, 5, 2)
+    assert xpra.session_state(p.sessions, ":100") == "LIVE"
+    assert xpra.session_state(p.sessions, ":7") == "DEAD"
+    assert xpra.session_state(p.sessions, ":101") == "NONE"
+
+
+def test_parse_probe_installed_but_no_sessions():
+    p = xpra.parse_probe("ONEPANE_XPRA xpra v6.5.2-r0\nONEPANE_SESSIONS\nNo xpra sessions found\n")
+    assert p.installed is True
+    assert xpra.session_state(p.sessions, ":100") == "NONE"
+
+
+def test_probe_cmd_does_not_rely_on_exit_code():
+    cmd = xpra.probe_cmd()
+    assert "command -v xpra" in cmd
+    assert xpra.MARK_MISSING in cmd
+
+
 def test_ssh_hint_points_at_tailscale_when_name_unresolvable():
     """Đúng lỗi đã gặp thật: host đặt là 'vivo' nhưng tên Tailscale là 'thi-pc'."""
     hint = xpra.ssh_hint("ssh: Could not resolve hostname vivo: Name or service not known", "vivo")
