@@ -43,10 +43,14 @@ elif [ -n "$CODENAME" ]; then
       echo "LỖI: cần quyền sudo để cài gói trên máy này." >&2
       exit 1
     fi
-  elif ! sudo -n true 2>/dev/null; then
+  # Thử bằng chính apt-get chứ không phải `sudo -n true`: dòng NOPASSWD chỉ cấp
+  # ba lệnh cụ thể, nên `true` luôn bị từ chối kể cả khi sudoers đã đúng hoàn
+  # toàn — thử sai lệnh thì kết luận sai.
+  elif ! sudo -n apt-get --version >/dev/null 2>&1; then
     echo "LỖI: máy con cần sudo không mật khẩu (onepane chạy không tương tác)." >&2
-    echo "      Chạy 'sudo visudo' trên máy đó rồi thêm dòng:" >&2
-    echo "        $USER ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/wget, /usr/bin/loginctl" >&2
+    echo "      Chạy trên máy đó:" >&2
+    echo "        echo '$USER ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/wget, /usr/bin/loginctl' \\" >&2
+    echo "          | sudo tee /etc/sudoers.d/onepane && sudo chmod 440 /etc/sudoers.d/onepane" >&2
     exit 1
   fi
   sudo apt-get install -y -qq wget ca-certificates >/dev/null
