@@ -71,6 +71,27 @@ def format_version(parts: tuple[int, ...] | None) -> str:
     return ".".join(str(p) for p in parts) if parts else "?"
 
 
+def ssh_hint(error: str, host: str) -> str:
+    """Biến lỗi ssh thô thành câu gợi ý cụ thể.
+
+    Bẫy hay gặp nhất là đặt `host` bằng tên máy tự nghĩ ra thay vì tên Tailscale
+    thật — ssh chỉ báo "Name or service not known", không nói phải sửa ở đâu.
+    """
+    low = error.lower()
+    if "not known" in low or "could not resolve" in low or "nodename nor servname" in low:
+        return (
+            f"không phân giải được tên {host!r}. Chạy `tailscale status` để lấy tên "
+            f"thật (hoặc IP 100.x.y.z) rồi sửa `host` trong config."
+        )
+    if "permission denied" in low:
+        return f"ssh từ chối. Chạy: ssh-copy-id {host}"
+    if "connection refused" in low:
+        return f"máy có trả lời nhưng không mở sshd. Trên {host}: sudo systemctl enable --now ssh"
+    if "timed out" in low or "quá" in error:
+        return f"{host} không phản hồi — máy tắt, hoặc Tailscale trên máy đó chưa lên."
+    return f"thử tay: ssh {host}"
+
+
 def version_gap(hub: tuple[int, ...] | None, node: tuple[int, ...] | None) -> str | None:
     """Cảnh báo nếu client (hub) và server (máy con) lệch thế hệ giao thức.
 

@@ -10,6 +10,8 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -115,20 +117,32 @@ def run_script(node: Node, hub: Hub, script: str, *, timeout: int = 300) -> Resu
     return Result(proc.returncode, proc.stdout, proc.stderr)
 
 
-def run_local(script: str, *, timeout: int = 900) -> Result:
-    """Chạy script bash ngay trên máy hub (không qua ssh)."""
+def run_local(script: str, *, timeout: int = 900) -> int:
+    """Chạy script bash trên máy hub, để nguyên stdin/stdout/stderr của terminal.
+
+    Ghi ra file tạm rồi `bash <file>` thay vì đẩy qua stdin: script đi bằng stdin
+    thì sudo không còn đường đọc mật khẩu, nên `sudo -v` chạy ở dòng trước cũng
+    vô ích. Giữ nguyên tty ở đây để sudo tự hỏi như bình thường.
+
+    Trả mã thoát; output chảy thẳng ra màn hình chứ không bắt lại.
+    """
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".sh", prefix="onepane-provision-", delete=False, encoding="utf-8"
+    ) as fh:
+        fh.write(script)
+        path = fh.name
+    os.chmod(path, 0o700)
     try:
-        proc = subprocess.run(
-            ["bash", "-s"],
-            input=script,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
+        proc = subprocess.run(["bash", path], timeout=timeout, check=False)
+        return proc.returncode
     except subprocess.TimeoutExpired:
-        return Result(124, "", f"script chạy quá {timeout}s")
-    return Result(proc.returncode, proc.stdout, proc.stderr)
+        print(f"script chạy quá {timeout}s", file=sys.stderr)
+        return 124
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 def which(binary: str) -> str | None:

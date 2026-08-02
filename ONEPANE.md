@@ -86,8 +86,31 @@ onepane up --all      # dựng phiên
 onepane attach --all  # kéo cửa sổ về đây
 ```
 
-`setup` cần **ssh bằng key, không hỏi mật khẩu** (mọi lệnh chạy ở `BatchMode`)
-và cần `sudo` không mật khẩu trên máy con để cài gói.
+### Về quyền sudo
+
+Hai vai trò khác nhau, đừng nhầm:
+
+- **Hub** (`setup --hub`) chạy tại chỗ, còn nguyên terminal, nên `sudo` cứ hỏi
+  mật khẩu bình thường và bạn gõ vào. Không cần chuẩn bị gì.
+- **Máy con** (`setup <tên>`) chạy qua `ssh` ở `BatchMode` — không có tty, không
+  có đường nào nhập mật khẩu. Nên máy con **bắt buộc** phải có sudo không mật
+  khẩu. Trên từng máy con, `sudo visudo` rồi thêm:
+
+  ```
+  <user> ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/wget, /usr/bin/loginctl
+  ```
+
+  Chỉ mở đúng ba lệnh cần cho việc cài, không mở toàn quyền.
+
+Ngoài ra `setup` cần **ssh bằng key, không hỏi mật khẩu** tới mọi máy con
+(`ssh-copy-id <user>@<host>` nếu chưa có).
+
+### Tên máy trong config
+
+`host` phải là tên Tailscale thật hoặc IP `100.x.y.z`, không phải nhãn bạn tự
+đặt. Nhãn nằm ở `[node:...]` và độc lập với `host` — nên `[node:vivo]` trỏ tới
+`host = thi-pc` là hoàn toàn hợp lệ, bạn vẫn gõ `onepane run vivo firefox`.
+Lấy tên thật bằng `tailscale status`; sai tên thì `doctor` sẽ nói thẳng.
 
 ### Về phiên bản xpra
 

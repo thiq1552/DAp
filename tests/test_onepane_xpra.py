@@ -41,6 +41,28 @@ def test_format_version():
     assert xpra.format_version(None) == "?"
 
 
+def test_ssh_hint_points_at_tailscale_when_name_unresolvable():
+    """Đúng lỗi đã gặp thật: host đặt là 'vivo' nhưng tên Tailscale là 'thi-pc'."""
+    hint = xpra.ssh_hint("ssh: Could not resolve hostname vivo: Name or service not known", "vivo")
+    assert "tailscale status" in hint
+    assert "'vivo'" in hint
+
+
+def test_ssh_hint_distinguishes_auth_from_dns():
+    assert "ssh-copy-id thi@thi-pc" in xpra.ssh_hint("Permission denied (publickey).", "thi@thi-pc")
+    assert "sshd" in xpra.ssh_hint("connect: Connection refused", "thi-pc")
+
+
+def test_ssh_hint_for_offline_machine():
+    """Máy công ty tắt -> timeout, phải nói là máy tắt chứ không phải sai tên."""
+    hint = xpra.ssh_hint("ssh tới may-cty quá 20s không phản hồi", "may-cty")
+    assert "tắt" in hint and "tailscale status" not in hint
+
+
+def test_ssh_hint_falls_back_without_guessing():
+    assert xpra.ssh_hint("something nobody predicted", "may-cty") == "thử tay: ssh may-cty"
+
+
 def test_version_gap_flags_ubuntu_repo_vs_upstream():
     """Bẫy hay gặp nhất: hub dùng xpra 3.1.5 của Ubuntu, máy con đã lên 6.x."""
     gap = xpra.version_gap((3, 1, 5), (6, 2, 1))

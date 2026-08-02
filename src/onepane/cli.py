@@ -133,7 +133,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             if info.get("code") == 127:
                 print("      cài client ssh cho máy hub: sudo apt install openssh-client")
             else:
-                print(f"      thử: ssh {node.ssh_target} — máy có bật không? Tailscale đã lên chưa?")
+                print(f"      {xpra.ssh_hint(info.get('error') or '', node.ssh_target)}")
             failed += 1
             continue
         print(f"  {OK} ssh")
@@ -182,15 +182,14 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
     if args.hub:
         print("── cài đặt máy này (hub)")
-        res = remote.run_local(_provision_script(None))
-        for line in res.stdout.splitlines():
-            if line.strip() and line.strip() != "PROVISION_OK":
-                print(line if line.startswith("  ") else f"  {line}")
-        if res.ok and "PROVISION_OK" in res.stdout:
+        print("   (sudo sẽ hỏi mật khẩu nếu cần — cứ nhập bình thường)")
+        # Output chảy thẳng ra terminal để sudo hỏi được và bạn thấy apt chạy tới đâu.
+        code = remote.run_local(_provision_script(None))
+        if code == 0:
             print(f"  {OK} xong")
         else:
             failed += 1
-            print(f"  {BAD} thất bại: {res.message}")
+            print(f"  {BAD} thất bại (mã {code})")
         # `--hub` một mình thì chỉ cài hub, không đụng máy con.
         if not args.nodes:
             return 1 if failed else 0
