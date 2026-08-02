@@ -514,6 +514,43 @@ def cmd_task_kill(args: argparse.Namespace) -> int:
     return 0
 
 
+def _task_windows(cfg: Config, found: list[tasks.Task]) -> list[tuple[str, str]]:
+    return [
+        (t.label, tmux.task_window_command(t, cfg.node(t.node), cfg))
+        for t in sorted(found, key=lambda t: (t.node, t.name))
+    ]
+
+
+def _sync_existing_session(cfg: Config, nodes: list[Node]) -> int:
+    """Bổ sung cửa sổ cho task mới vào phiên đang chạy, rồi nối vào.
+
+    Task tạo sau khi `term` đã dựng thì phải tự xuất hiện. Bắt người dùng nhớ
+    `--recreate` vừa phiền vừa nguy hiểm: dựng lại là đá mọi cửa sổ đang mở.
+    """
+    listing = subprocess.run(
+        tmux.list_windows_command(cfg), capture_output=True, text=True
+    )
+    existing = {ln.strip() for ln in listing.stdout.splitlines() if ln.strip()}
+
+    found, _ = _collect_tasks(cfg, nodes)
+    added = 0
+    for label, command in _task_windows(cfg, found):
+        if label in existing:
+            continue
+        res = subprocess.run(
+            tmux.add_window_command(cfg, label, command), capture_output=True, text=True
+        )
+        if res.returncode == 0:
+            added += 1
+
+    session = cfg.hub.tmux_session
+    if added:
+        print(f"{OK} phiên '{session}': thêm {added} cửa sổ cho task mới")
+    else:
+        print(f"{OK} nối vào phiên '{session}' đang có")
+    return subprocess.run(tmux.attach_command(cfg)).returncode
+
+
 def cmd_term(args: argparse.Namespace) -> int:
     cfg = Config.load(_config_path(args))
     nodes = cfg.select(args.nodes)
@@ -522,17 +559,13 @@ def cmd_term(args: argparse.Namespace) -> int:
         if args.recreate:
             subprocess.run(tmux.kill_session_command(cfg), capture_output=True)
         else:
-            print(f"{OK} nối vào phiên tmux '{cfg.hub.tmux_session}' đang có")
-            return subprocess.run(tmux.attach_command(cfg)).returncode
+            return _sync_existing_session(cfg, nodes)
 
     found, offline = _collect_tasks(cfg, nodes)
     for name in offline:
         print(f"{WARN} {name}: không hỏi được (máy tắt?) — vẫn tạo cửa sổ, nó sẽ tự nối lại")
 
-    windows: list[tuple[str, str]] = [
-        (t.label, tmux.task_window_command(t, cfg.node(t.node), cfg))
-        for t in sorted(found, key=lambda t: (t.node, t.name))
-    ]
+    windows: list[tuple[str, str]] = _task_windows(cfg, found)
     # Máy chưa có task nào vẫn cần một cửa sổ shell để bạn vào làm việc.
     for node in nodes:
         if not any(t.node == node.name for t in found):

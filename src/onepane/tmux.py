@@ -91,6 +91,15 @@ def build_commands(cfg: Config, windows: list[tuple[str, str]]) -> list[list[str
     return cmds
 
 
+def list_windows_command(cfg: Config) -> list[str]:
+    return ["tmux", "list-windows", "-t", cfg.hub.tmux_session, "-F", "#{window_name}"]
+
+
+def add_window_command(cfg: Config, label: str, command: str) -> list[str]:
+    """Thêm cửa sổ vào phiên đang chạy mà không nhảy sang nó (-d)."""
+    return ["tmux", "new-window", "-d", "-t", cfg.hub.tmux_session, "-n", label, command]
+
+
 def attach_command(cfg: Config) -> list[str]:
     return ["tmux", "attach-session", "-t", cfg.hub.tmux_session]
 

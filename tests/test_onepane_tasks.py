@@ -128,3 +128,17 @@ def test_resolve_qualified_name():
 def test_resolve_unknown_lists_what_exists():
     with pytest.raises(TaskError, match="may-nha/build"):
         tasks.resolve(_two_machines(), "khong-co")
+
+
+# ------------------------------------------------- gom cửa sổ vào phiên có sẵn
+
+
+def test_add_window_does_not_steal_focus():
+    """Thêm cửa sổ cho task mới không được nhảy màn hình khỏi việc đang làm."""
+    from onepane import tmux
+    from onepane.config import Config, Hub, Node
+
+    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[Node(name="a", host="a")])
+    cmd = tmux.add_window_command(cfg, "viec · a", "echo x")
+    assert cmd[:3] == ["tmux", "new-window", "-d"]
+    assert "cum" in cmd
