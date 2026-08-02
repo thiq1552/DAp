@@ -65,8 +65,29 @@ def build_commands(cfg: Config, windows: list[tuple[str, str]]) -> list[list[str
     for label, command in rest:
         cmds.append(["tmux", "new-window", "-t", session, "-n", label, command])
 
+    cmds += session_option_commands(cfg)
+    cmds.append(["tmux", "select-window", "-t", f"{session}:1"])
+    return cmds
+
+
+def session_option_commands(cfg: Config) -> list[list[str]]:
+    """Tuỳ chọn cho phiên của hub. Tách riêng để áp lại được lên phiên đã dựng."""
+    session = cfg.hub.tmux_session
     opt = ["tmux", "set-option", "-t", session]
+    cmds: list[list[str]] = []
+
     cmds.append([*opt, "mouse", "on"])
+    # Mặc định tmux đổi tên cửa sổ theo lệnh đang chạy, tức nhãn "việc · máy"
+    # bị thay bằng "ssh" ngay khi kết nối. Mất nhãn thì bạn không biết cửa sổ
+    # nào của máy nào, và `term` cũng không nhận ra cửa sổ nào đã có -> lần sau
+    # nó thêm trùng. Khoá cả hai đường đổi tên.
+    cmds.append([*opt, "automatic-rename", "off"])
+    cmds.append([*opt, "allow-rename", "off"])
+    # Nhãn task khá dài; status-right mặc định (ngày giờ) chiếm chỗ và đẩy các
+    # cửa sổ sau ra khỏi màn hình.
+    cmds.append([*opt, "status-right", ""])
+    cmds.append([*opt, "status-left", " onepane "])
+    cmds.append([*opt, "status-left-length", "12"])
     # Tầng ngoài cũng phải cho OSC 52 đi qua, nếu không chuỗi từ máy con dừng
     # ở đây và clipboard của hub không bao giờ nhận được gì. Đây là tuỳ chọn
     # cấp server (-s) nên không gắn với phiên nào.
@@ -82,12 +103,10 @@ def build_commands(cfg: Config, windows: list[tuple[str, str]]) -> list[list[str
     cmds.append([*opt, "prefix", HUB_PREFIX])
     # Nhấn phím dẫn hai lần để gửi nó xuống ứng dụng bên trong.
     cmds.append(["tmux", "bind-key", "-T", "prefix", HUB_PREFIX, "send-prefix"])
-    # Thanh trạng thái nói rõ đang ở cửa sổ nào, vì đó là thứ phân biệt máy.
-    cmds.append([*opt, "status-left", " onepane "])
-    cmds.append([*opt, "status-left-length", "12"])
+    # Nhãn cửa sổ là thứ duy nhất cho biết đang gõ vào máy nào — cho nó đủ chỗ.
     cmds.append([*opt, "window-status-format", " #I #W "])
     cmds.append([*opt, "window-status-current-format", " #I #W "])
-    cmds.append(["tmux", "select-window", "-t", f"{session}:1"])
+    cmds.append([*opt, "status-justify", "left"])
     return cmds
 
 

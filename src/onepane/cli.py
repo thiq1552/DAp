@@ -527,13 +527,21 @@ def _sync_existing_session(cfg: Config, nodes: list[Node]) -> int:
     Task tạo sau khi `term` đã dựng thì phải tự xuất hiện. Bắt người dùng nhớ
     `--recreate` vừa phiền vừa nguy hiểm: dựng lại là đá mọi cửa sổ đang mở.
     """
+    # Phiên có thể đã dựng bằng bản cũ, khi automatic-rename còn bật. Áp lại
+    # tuỳ chọn trước khi đọc tên cửa sổ, nếu không tên đã bị đổi thành "ssh".
+    for command in tmux.session_option_commands(cfg):
+        subprocess.run(command, capture_output=True)
+
     listing = subprocess.run(
         tmux.list_windows_command(cfg), capture_output=True, text=True
     )
     existing = {ln.strip() for ln in listing.stdout.splitlines() if ln.strip()}
 
-    found, _ = _collect_tasks(cfg, nodes)
-    added = 0
+    found, offline = _collect_tasks(cfg, nodes)
+    for name in offline:
+        print(f"{WARN} {name}: không hỏi được (máy tắt?) — task của máy này chưa hiện")
+
+    added: list[str] = []
     for label, command in _task_windows(cfg, found):
         if label in existing:
             continue
@@ -541,13 +549,23 @@ def _sync_existing_session(cfg: Config, nodes: list[Node]) -> int:
             tmux.add_window_command(cfg, label, command), capture_output=True, text=True
         )
         if res.returncode == 0:
-            added += 1
+            added.append(label)
+        else:
+            print(f"{BAD} không thêm được '{label}': {res.stderr.strip()}")
 
     session = cfg.hub.tmux_session
     if added:
-        print(f"{OK} phiên '{session}': thêm {added} cửa sổ cho task mới")
+        print(f"{OK} phiên '{session}': thêm {len(added)} cửa sổ — {', '.join(added)}")
     else:
         print(f"{OK} nối vào phiên '{session}' đang có")
+
+    # In danh sách thật để bạn đối chiếu, không phải đoán qua thanh trạng thái
+    # (nó cắt bớt khi nhãn dài).
+    final = subprocess.run(tmux.list_windows_command(cfg), capture_output=True, text=True)
+    for i, name in enumerate(final.stdout.split("\n"), 1):
+        if name.strip():
+            print(f"   {i}. {name.strip()}")
+
     return subprocess.run(tmux.attach_command(cfg)).returncode
 
 

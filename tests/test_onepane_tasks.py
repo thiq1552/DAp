@@ -142,3 +142,25 @@ def test_add_window_does_not_steal_focus():
     cmd = tmux.add_window_command(cfg, "viec · a", "echo x")
     assert cmd[:3] == ["tmux", "new-window", "-d"]
     assert "cum" in cmd
+
+
+def test_window_labels_are_not_auto_renamed():
+    """tmux đổi tên cửa sổ thành 'ssh' thì mất nhãn máy, và sync thêm trùng."""
+    from onepane import tmux
+    from onepane.config import Config, Hub, Node
+
+    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[Node(name="a", host="a")])
+    opts = tmux.session_option_commands(cfg)
+    assert ["tmux", "set-option", "-t", "cum", "automatic-rename", "off"] in opts
+    assert ["tmux", "set-option", "-t", "cum", "allow-rename", "off"] in opts
+
+
+def test_build_applies_the_same_options_as_sync():
+    """Phiên dựng mới và phiên áp lại phải giống nhau, nếu không hành vi lệch."""
+    from onepane import tmux
+    from onepane.config import Config, Hub, Node
+
+    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[Node(name="a", host="a")])
+    built = tmux.build_commands(cfg, [("x", "echo 1")])
+    for opt in tmux.session_option_commands(cfg):
+        assert opt in built
