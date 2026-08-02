@@ -18,7 +18,9 @@ Tên mạch việc và bối cảnh thêm (có thể trống): $ARGUMENTS
      `chu-de`, `may`, `trang-thai`, `cap-nhat`. Hỏi người dùng chọn cái nào.
      **Đừng tự chọn** — chọn nhầm mạch việc là sửa nhầm thứ.
    - **Không có file nào** → nói thẳng và hỏi người dùng muốn làm gì.
-3. File có ghi `may:` khác máy đang chạy thì nói ra trước khi làm — có thể người
+3. In `phien:` của file đã chọn cho người dùng thấy. Đó là link tới cuộc hội thoại
+   đã tạo ra bàn giao này — họ mở lại được nếu cần xem đã bàn những gì.
+4. File có ghi `may:` khác máy đang chạy thì nói ra trước khi làm — có thể người
    dùng gõ nhầm phiên.
 
 ## Trước khi tin bàn giao

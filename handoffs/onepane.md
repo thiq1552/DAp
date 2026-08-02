@@ -1,5 +1,6 @@
 ---
 chu-de: onepane — gom terminal nhiều máy về một màn hình
+phien: https://claude.ai/code/session_011LEaSikzH1upngr6tTrMWt
 may: may-cty
 trang-thai: đang làm
 cap-nhat: 2026-08-02
@@ -114,3 +115,9 @@ với `capture_output=True` rồi vứt mã thoát đi. Luôn báo khi một bư
 - [`ONEPANE.md`](ONEPANE.md) — tài liệu đầy đủ của onepane
 - [`README.md`](README.md) — tài liệu ccbus
 - `src/onepane/tasks.py` — mô hình task, đọc trước khi sửa gì liên quan
+
+## Chuỗi bàn giao
+
+- 2026-08-02 · claude.ai · https://claude.ai/code/session_011LEaSikzH1upngr6tTrMWt ·
+  dựng xong `task` + gom cửa sổ + clipboard OSC 52; đã xác nhận đa máy bằng
+  `hostname`; còn hai điểm cần tay người: phím `C-a` và copy/dán giữa hai máy.

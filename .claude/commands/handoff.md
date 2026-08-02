@@ -22,6 +22,7 @@ Mở đầu file bằng khối metadata này (giữ nguyên tên khoá):
 ```
 ---
 chu-de: <một dòng, việc này là gì>
+phien: <định danh phiên đang viết — xem dưới>
 may: <tên Tailscale của máy sẽ chạy tiếp, hoặc "bất kỳ">
 trang-thai: đang làm | chờ người dùng | xong
 cap-nhat: <YYYY-MM-DD>
@@ -30,6 +31,36 @@ cap-nhat: <YYYY-MM-DD>
 
 `trang-thai: xong` thì xoá file luôn trong lần bàn giao sau — thư mục này là
 việc đang mở, không phải nhật ký.
+
+### `phien:` — khoá chống nhầm
+
+Ghi **đúng giá trị** bạn đặt ở trailer `Claude-Session:` khi commit. Đó là link
+định danh phiên hiện tại, không trùng với phiên nào khác. Môi trường không cung
+cấp link thì ghi `local:<hostname>:<YYYY-MM-DD HH:MM>`.
+
+Giá trị này để người dùng **quay lại đúng cuộc hội thoại đã tạo ra bàn giao** —
+tên file có thể đặt trùng ý nhau, link phiên thì không.
+
+**Trước khi ghi đè một file đã có:** đọc `phien:` cũ. Nếu nó khác phiên hiện tại,
+**dừng lại và hỏi người dùng**, in cả hai giá trị ra. Hai khả năng:
+
+- Cùng một mạch việc, chỉ là đổi phiên (thường gặp: claude.ai ↔ máy tại chỗ) →
+  ghi đè, cập nhật `phien:` thành phiên hiện tại.
+- Hai mạch việc khác nhau vô tình trùng tên file → **đừng ghi đè**, đặt tên khác.
+
+Đây là chỗ dễ mất việc nhất: ghi đè nhầm là mất toàn bộ ngữ cảnh của mạch kia,
+mà ngữ cảnh đó chính là thứ không suy lại được từ code.
+
+### Chuỗi bàn giao
+
+Cuối file giữ một mục `## Chuỗi bàn giao`, mỗi lần bàn giao **thêm một dòng vào
+cuối**, không xoá dòng cũ:
+
+```
+- 2026-08-02 · claude.ai · <link phiên> · dựng xong task + clipboard, chưa thử phím
+```
+
+Nhờ nó người dùng lần ngược được mạch việc đã đi qua những phiên nào.
 
 ## Nội dung
 
