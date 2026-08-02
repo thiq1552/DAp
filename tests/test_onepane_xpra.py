@@ -41,6 +41,30 @@ def test_format_version():
     assert xpra.format_version(None) == "?"
 
 
+def test_version_gap_flags_ubuntu_repo_vs_upstream():
+    """Bẫy hay gặp nhất: hub dùng xpra 3.1.5 của Ubuntu, máy con đã lên 6.x."""
+    gap = xpra.version_gap((3, 1, 5), (6, 2, 1))
+    assert gap is not None
+    assert "hub 3.1.5" in gap and "máy con 6.2.1" in gap
+    assert "hub cũ hơn máy con" in gap
+
+
+def test_version_gap_names_whichever_side_is_older():
+    gap = xpra.version_gap((6, 2, 1), (3, 1, 5))
+    assert "máy con cũ hơn hub" in gap
+
+
+def test_version_gap_silent_when_same_major():
+    assert xpra.version_gap((6, 2, 1), (6, 0)) is None
+    assert xpra.version_gap((3, 1, 5), (3, 1, 5)) is None
+
+
+def test_version_gap_silent_when_version_unknown():
+    # Không đọc được phiên bản thì im lặng còn hơn cảnh báo sai.
+    assert xpra.version_gap(None, (6, 2)) is None
+    assert xpra.version_gap((6, 2), None) is None
+
+
 def test_start_server_uses_start_alias_for_old_version_compat():
     cmd = xpra.start_server_cmd(VIVO)
     # `start` chứ không phải `seamless`: chạy được cả xpra 3.x lẫn 6.x.

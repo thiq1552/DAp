@@ -56,10 +56,16 @@ biến mất kéo theo vị trí của bạn trong phiên.
 Trên **máy hub** (máy bạn ngồi trước):
 
 ```bash
-sudo apt install xpra tmux openssh-client
 pip install -e .            # trong thư mục repo này
+onepane setup --hub         # xpra (bản mới) + tmux + ssh client
 onepane init                # tạo ~/.config/onepane/config.ini
 ```
+
+Đừng dùng `apt install xpra` cho hub: kho Ubuntu 24.04 dừng ở xpra 3.1.5, trong
+khi `onepane setup` cài 6.x lên máy con — client và server lệch hai thế hệ giao
+thức thì hỏng theo kiểu rất khó đoán. `setup --hub` thêm kho xpra.org rồi cài
+đúng bản, nên hai đầu khớp nhau. `onepane doctor` cũng kiểm tra chuyện này và
+báo nếu lệch.
 
 Sửa `config.ini` cho khớp máy của bạn — `host` là tên Tailscale (MagicDNS) hoặc
 IP `100.x.y.z`:
@@ -74,8 +80,8 @@ display = :100
 Rồi cài lên các máy con và dựng phiên:
 
 ```bash
-onepane doctor        # ssh được chưa, xpra có chưa, phiên sống chưa
-onepane setup --all   # cài xpra + systemd unit lên từng máy (chạy lại được)
+onepane doctor        # hub ổn chưa, ssh được chưa, xpra hai đầu có khớp không
+onepane setup --all   # cài xpra + systemd unit lên từng máy con (chạy lại được)
 onepane up --all      # dựng phiên
 onepane attach --all  # kéo cửa sổ về đây
 ```
@@ -89,6 +95,10 @@ Kho Ubuntu đóng băng xpra ở phiên bản của ngày phát hành — 24.04 
 trong khi bản chính chủ đã 6.x. `onepane setup` tự thêm kho của xpra.org theo
 đúng codename của máy đó. Nếu kho chưa hỗ trợ codename ấy, script lùi về gói
 trong Ubuntu và in cảnh báo — vẫn chạy, chỉ là bản cũ hơn.
+
+Điều quan trọng: **hub và máy con phải cùng thế hệ.** Đó là lý do `setup --hub`
+tồn tại và `doctor` so phiên bản hai đầu. Máy nào đã lỡ cài gói distro thì script
+tự `--only-upgrade` lên bản của kho mới, vì `apt install` không tự nâng.
 
 Vì vậy mọi lệnh trong `onepane` dùng subcommand `xpra start` chứ không phải
 `xpra seamless`: từ v6 `seamless` là tên chính thức nhưng `start` vẫn là alias

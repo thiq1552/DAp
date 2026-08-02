@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Cài xpra + systemd user unit lên MỘT máy con. Chạy qua ssh bởi `onepane setup`.
+# Cài xpra lên một máy. Chạy qua ssh bởi `onepane setup` (máy con), hoặc chạy
+# thẳng tại chỗ bởi `onepane setup --hub` (máy bạn ngồi trước).
 # Chạy lại nhiều lần được — mọi bước đều kiểm tra trước khi làm.
 #
-# Biến truyền vào từ onepane: ONEPANE_DISPLAY (ví dụ "100")
+# Biến truyền vào từ onepane:
+#   ONEPANE_ROLE     node | hub
+#   ONEPANE_DISPLAY  số display cho phiên, ví dụ "100" (chỉ dùng khi role=node)
 set -euo pipefail
 
+ROLE="${ONEPANE_ROLE:-node}"
 DISPLAY_NUM="${ONEPANE_DISPLAY:-100}"
 UNIT_DIR="$HOME/.config/systemd/user"
 UNIT_NAME="onepane-xpra@.service"
 
 say() { printf '  %s\n' "$*"; }
 
-# ---------------------------------------------------------------- 1. kho xpra
-if ! command -v lsb_release >/dev/null 2>&1 && [ ! -f /etc/os-release ]; then
+if [ ! -f /etc/os-release ]; then
   echo "LỖI: không xác định được bản Linux trên máy này" >&2
   exit 1
 fi
@@ -20,15 +23,16 @@ fi
 # shellcheck disable=SC1091
 . /etc/os-release
 CODENAME="${VERSION_CODENAME:-}"
+say "vai trò: $ROLE"
 say "hệ điều hành: ${PRETTY_NAME:-?} (codename: ${CODENAME:-không rõ})"
 
-need_repo=1
+# ---------------------------------------------------------------- 1. kho xpra
+# Kho Ubuntu đóng băng xpra ở phiên bản ngày phát hành (24.04 = 3.1.5) trong khi
+# upstream đã 6.x. Hub và máy con PHẢI cùng thế hệ, nếu không client/server lệch
+# giao thức — nên bước này chạy cho cả hai vai trò.
 if [ -f /etc/apt/sources.list.d/xpra.sources ]; then
   say "kho xpra đã có sẵn"
-  need_repo=0
-fi
-
-if [ "$need_repo" = 1 ] && [ -n "$CODENAME" ]; then
+elif [ -n "$CODENAME" ]; then
   REPO_URL="https://raw.githubusercontent.com/Xpra-org/xpra/master/packaging/repos/$CODENAME/xpra.sources"
   say "thêm kho chính chủ xpra cho $CODENAME"
   sudo -n true 2>/dev/null || { echo "LỖI: cần sudo không mật khẩu để cài gói" >&2; exit 1; }
@@ -37,20 +41,39 @@ if [ "$need_repo" = 1 ] && [ -n "$CODENAME" ]; then
   # Kho không có codename này (bản Ubuntu quá mới/quá cũ) -> dùng gói của distro.
   if sudo wget -qO /etc/apt/sources.list.d/xpra.sources "$REPO_URL"; then
     say "đã thêm kho xpra"
+    sudo apt-get update -qq
+    # Gói distro đã cài sẵn thì phải nâng lên bản của kho mới, `install` không tự làm.
+    if command -v xpra >/dev/null 2>&1; then
+      say "nâng xpra lên bản của kho chính chủ"
+      sudo apt-get install -y -qq --only-upgrade xpra || true
+    fi
   else
     sudo rm -f /etc/apt/sources.list.d/xpra.sources
     say "CẢNH BÁO: kho xpra chưa hỗ trợ '$CODENAME', dùng gói sẵn trong Ubuntu (bản cũ hơn)"
   fi
 fi
 
-# --------------------------------------------------------------- 2. cài xpra
+# --------------------------------------------------------------- 2. cài gói
 if command -v xpra >/dev/null 2>&1; then
-  say "xpra đã cài: $(xpra --version 2>&1 | head -1)"
+  say "xpra: $(xpra --version 2>&1 | head -1)"
 else
   say "cài xpra (có thể mất vài phút)"
   sudo apt-get update -qq
   sudo apt-get install -y -qq xpra
   say "đã cài: $(xpra --version 2>&1 | head -1)"
+fi
+
+if [ "$ROLE" = "hub" ]; then
+  # Hub chỉ làm client: cần tmux cho `onepane term` và ssh client để nối máy con.
+  for pkg in tmux openssh-client; do
+    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+      say "cài $pkg"
+      sudo apt-get install -y -qq "$pkg"
+    fi
+  done
+  say "hub xong — không dựng phiên server ở đây"
+  echo "PROVISION_OK"
+  exit 0
 fi
 
 # Xvfb là màn hình ảo mà phiên seamless vẽ lên. Gói xpra thường kéo theo sẵn,

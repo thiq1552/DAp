@@ -71,6 +71,24 @@ def format_version(parts: tuple[int, ...] | None) -> str:
     return ".".join(str(p) for p in parts) if parts else "?"
 
 
+def version_gap(hub: tuple[int, ...] | None, node: tuple[int, ...] | None) -> str | None:
+    """Cảnh báo nếu client (hub) và server (máy con) lệch thế hệ giao thức.
+
+    xpra tương thích ngược trong cùng dòng major, nhưng client 3.x nối server
+    6.x thì hỏng theo kiểu khó đoán. Đây là bẫy dễ dính nhất vì kho Ubuntu
+    đứng ở 3.1.5 còn `onepane setup` cài 6.x lên máy con.
+    """
+    if not hub or not node:
+        return None
+    if hub[0] == node[0]:
+        return None
+    older, newer = ("hub", "máy con") if hub[0] < node[0] else ("máy con", "hub")
+    return (
+        f"lệch phiên bản: hub {format_version(hub)} vs máy con {format_version(node)} "
+        f"— {older} cũ hơn {newer} một thế hệ, nên nâng cho khớp"
+    )
+
+
 def start_server_cmd(node: Node) -> str:
     """Lệnh chạy TRÊN máy con để dựng phiên seamless."""
     argv = ["xpra", "start", node.display, *SERVER_OPTS]

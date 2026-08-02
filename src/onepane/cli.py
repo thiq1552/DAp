@@ -12,8 +12,9 @@ from pathlib import Path
 
 from . import config as cfgmod
 from . import tmux, xpra
+from . import remote
 from .config import Config, ConfigError, Node
-from .remote import Result, run, run_script, state_dir
+from .remote import run, run_script, state_dir
 
 OK = "✓"
 BAD = "✗"
@@ -28,11 +29,25 @@ def _template(name: str) -> str:
     return resources.files("onepane.templates").joinpath(name).read_text(encoding="utf-8")
 
 
-def _provision_script(node: Node) -> str:
-    """Ghép unit systemd vào script cài để chỉ tốn một lần ssh."""
+def _provision_script(node: Node | None) -> str:
+    """Ghép unit systemd vào script cài để chỉ tốn một lần ssh.
+
+    node=None nghĩa là cài cho chính máy hub — chỉ client, không dựng phiên.
+    """
     unit = _template("onepane-xpra@.service")
     script = _template("provision.sh").replace("__UNIT_BODY__", unit.rstrip("\n"))
-    return f"export ONEPANE_DISPLAY={node.display_number}\n{script}"
+    if node is None:
+        return f"export ONEPANE_ROLE=hub\n{script}"
+    return (
+        f"export ONEPANE_ROLE=node ONEPANE_DISPLAY={node.display_number}\n{script}"
+    )
+
+
+def _hub_xpra_version() -> tuple[int, ...] | None:
+    """Phiên bản xpra trên máy hub, None nếu chưa cài."""
+    if not remote.which("xpra"):
+        return None
+    return xpra.parse_version(remote.local_output(["xpra", "--version"]))
 
 
 # --------------------------------------------------------------------- init
@@ -73,9 +88,40 @@ def _probe(node: Node, cfg: Config) -> dict[str, object]:
     return info
 
 
+def _check_hub() -> tuple[tuple[int, ...] | None, int]:
+    """Kiểm tra máy hub. Trả (phiên bản xpra, số lỗi)."""
+    print("── máy này (hub)")
+    problems = 0
+
+    for binary, hint in (
+        ("ssh", "sudo apt install openssh-client"),
+        ("tmux", "sudo apt install tmux"),
+    ):
+        if remote.which(binary):
+            print(f"  {OK} {binary}")
+        else:
+            print(f"  {BAD} {binary}: chưa cài  →  {hint}")
+            problems += 1
+
+    version = _hub_xpra_version()
+    if version is None:
+        print(f"  {BAD} xpra: chưa cài  →  onepane setup --hub")
+        problems += 1
+    elif version[0] < 4:
+        print(
+            f"  {WARN} xpra {xpra.format_version(version)} — bản trong kho Ubuntu, "
+            f"sẽ lệch với máy con  →  onepane setup --hub"
+        )
+    else:
+        print(f"  {OK} xpra {xpra.format_version(version)}")
+
+    return version, problems
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     cfg = Config.load(_config_path(args))
     nodes = cfg.select(args.nodes)
+    hub_version, hub_problems = _check_hub()
     failed = 0
 
     for node in nodes:
@@ -104,6 +150,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         else:
             print(f"  {OK} xpra {label}")
 
+        gap = xpra.version_gap(hub_version, version)
+        if gap:
+            print(f"  {WARN} {gap}")
+            failed += 1
+
         state = info["session"]
         if state == "LIVE":
             print(f"  {OK} phiên {node.display} đang chạy")
@@ -114,20 +165,38 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             print(f"  {WARN} chưa có phiên {node.display}  →  onepane up {node.name}")
 
     print()
+    if hub_problems:
+        print(f"{BAD} máy hub thiếu {hub_problems} thứ — sửa trước, vì mọi thứ khác đi qua nó.")
     if failed:
-        print(f"{failed}/{len(nodes)} máy cần xử lý.")
-    else:
-        print(f"{OK} cả {len(nodes)} máy sẵn sàng.  Chạy: onepane attach --all")
-    return 1 if failed else 0
+        print(f"{BAD} {failed}/{len(nodes)} máy con cần xử lý.")
+    if not hub_problems and not failed:
+        print(f"{OK} hub và cả {len(nodes)} máy con đều sẵn sàng.  Chạy: onepane attach --all")
+    return 1 if (hub_problems or failed) else 0
 
 
 # -------------------------------------------------------------------- setup
 
 
 def cmd_setup(args: argparse.Namespace) -> int:
+    failed = 0
+
+    if args.hub:
+        print("── cài đặt máy này (hub)")
+        res = remote.run_local(_provision_script(None))
+        for line in res.stdout.splitlines():
+            if line.strip() and line.strip() != "PROVISION_OK":
+                print(line if line.startswith("  ") else f"  {line}")
+        if res.ok and "PROVISION_OK" in res.stdout:
+            print(f"  {OK} xong")
+        else:
+            failed += 1
+            print(f"  {BAD} thất bại: {res.message}")
+        # `--hub` một mình thì chỉ cài hub, không đụng máy con.
+        if not args.nodes:
+            return 1 if failed else 0
+
     cfg = Config.load(_config_path(args))
     nodes = cfg.select(args.nodes)
-    failed = 0
 
     for node in nodes:
         print(f"\n── cài đặt {node.name} ({node.ssh_target})")
@@ -351,6 +420,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("setup", help="cài xpra + systemd lên máy con (chạy lại được)")
     _add_nodes_arg(s, "tên máy cần cài; bỏ trống = tất cả")
+    s.add_argument(
+        "--hub",
+        action="store_true",
+        help="cài cho chính máy này (client xpra + tmux), không dựng phiên server",
+    )
     s.set_defaults(func=cmd_setup)
 
     s = sub.add_parser("up", help="dựng phiên xpra trên máy con")
