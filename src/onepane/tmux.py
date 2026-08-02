@@ -117,7 +117,21 @@ def session_option_commands(cfg: Config) -> list[list[str]]:
 
 
 def list_windows_command(cfg: Config) -> list[str]:
-    return ["tmux", "list-windows", "-t", cfg.hub.tmux_session, "-F", "#{window_name}"]
+    """Liệt kê cửa sổ kèm SỐ THẬT của tmux — đó là số bạn phải bấm."""
+    return [
+        "tmux", "list-windows", "-t", cfg.hub.tmux_session,
+        "-F", "#{window_index}\t#{window_name}",
+    ]
+
+
+def renumber_command(cfg: Config) -> list[str]:
+    """Đánh số lại từ base-index.
+
+    `base-index` chỉ áp cho cửa sổ tạo SAU khi đặt, mà build_commands tạo cửa
+    sổ trước rồi mới đặt tuỳ chọn — nên phiên luôn bắt đầu từ 0. `renumber-
+    windows` cũng chỉ chạy khi đóng cửa sổ. `move-window -r` đánh lại ngay.
+    """
+    return ["tmux", "move-window", "-r", "-t", cfg.hub.tmux_session]
 
 
 def add_window_command(cfg: Config, label: str, command: str) -> list[str]:

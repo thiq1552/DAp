@@ -554,10 +554,17 @@ def _verify_prefix(cfg: Config) -> None:
 
 
 def _print_windows(cfg: Config) -> None:
-    """Danh sách cửa sổ thật, để đối chiếu thay vì đoán qua thanh trạng thái."""
+    """Danh sách cửa sổ kèm số thật của tmux.
+
+    Trước đây in số bằng bộ đếm của Python, nên nó báo 1-4 trong khi tmux đánh
+    0-3 — hướng dẫn "bấm số 1" trỏ sai cửa sổ.
+    """
+    subprocess.run(tmux.renumber_command(cfg), capture_output=True)
     res = subprocess.run(tmux.list_windows_command(cfg), capture_output=True, text=True)
-    for i, name in enumerate([n for n in res.stdout.splitlines() if n.strip()], 1):
-        print(f"   {i}. {name.strip()}")
+    for line in res.stdout.splitlines():
+        index, _, name = line.partition("\t")
+        if name.strip():
+            print(f"   C-a {index}   {name.strip()}")
 
 
 def _attach_or_stop(cfg: Config, args: argparse.Namespace) -> int:
@@ -585,7 +592,11 @@ def _sync_existing_session(cfg: Config, nodes: list[Node], args: argparse.Namesp
     listing = subprocess.run(
         tmux.list_windows_command(cfg), capture_output=True, text=True
     )
-    existing = {ln.strip() for ln in listing.stdout.splitlines() if ln.strip()}
+    existing = {
+        ln.partition("\t")[2].strip()
+        for ln in listing.stdout.splitlines()
+        if ln.partition("\t")[2].strip()
+    }
 
     found, offline = _collect_tasks(cfg, nodes)
     for name in offline:

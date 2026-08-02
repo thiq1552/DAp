@@ -176,3 +176,14 @@ def test_inner_status_bar_is_hidden():
     """Hai thanh trạng thái chồng nhau: hub đã ghi đủ việc gì/máy nào."""
     assert "status off" in tasks.session_setup("'op-x'")
     assert "status off" in tasks.open_argv(["ssh", "n"], "x")[-1]
+
+
+def test_window_list_reports_real_tmux_index():
+    """In số bằng bộ đếm Python thì lệch với số thật của tmux -> bấm sai cửa sổ."""
+    from onepane import tmux
+    from onepane.config import Config, Hub, Node
+
+    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[Node(name="a", host="a")])
+    assert "#{window_index}" in tmux.list_windows_command(cfg)[-1]
+    # base-index chỉ áp cho cửa sổ tạo sau, nên phải đánh số lại tường minh.
+    assert tmux.renumber_command(cfg)[:3] == ["tmux", "move-window", "-r"]
