@@ -1,0 +1,258 @@
+from onepane import tasks, tmux, xpra
+from onepane.config import Config, Hub, Node
+from onepane.remote import ssh_command
+
+VIVO = Node(name="vivo", host="vivo", user="thi", display=":100")
+
+
+def test_parse_sessions_reads_live_and_dead():
+    out = """Found the following xpra sessions:
+/run/user/1000/xpra:
+\tLIVE session at :100
+\tDEAD session at :7
+"""
+    sessions = xpra.parse_sessions(out)
+    assert [(s.display, s.state) for s in sessions] == [(":100", "LIVE"), (":7", "DEAD")]
+    assert sessions[0].live is True
+    assert sessions[1].live is False
+
+
+def test_session_state_for_specific_display():
+    out = "\tLIVE session at :100\n\tDEAD session at :7\n"
+    assert xpra.session_state(out, ":100") == "LIVE"
+    assert xpra.session_state(out, ":7") == "DEAD"
+    assert xpra.session_state(out, ":55") == "NONE"
+    assert xpra.session_state("", ":100") == "NONE"
+
+
+def test_session_state_when_no_sessions():
+    assert xpra.session_state("No xpra sessions found", ":100") == "NONE"
+
+
+def test_parse_version_handles_both_package_styles():
+    assert xpra.parse_version("xpra v6.2.1") == (6, 2, 1)
+    assert xpra.parse_version("xpra v3.1.5-r0") == (3, 1, 5)
+    assert xpra.parse_version("xpra v5.0") == (5, 0)
+    assert xpra.parse_version("command not found") is None
+
+
+def test_format_version():
+    assert xpra.format_version((6, 2, 1)) == "6.2.1"
+    assert xpra.format_version(None) == "?"
+
+
+def test_attach_disables_audio_by_default():
+    """Bật cả loa lẫn micro thì micro thu tiếng loa -> hú. Mặc định phải tắt."""
+    argv = xpra.attach_argv(Node(name="vivo", host="thi-pc"), Hub())
+    assert "--speaker=off" in argv
+    assert "--microphone=off" in argv
+
+
+def test_attach_opts_can_re_enable_speaker():
+    """Tắt mặc định nhưng không được khoá cứng — attach_opts đứng sau nên thắng."""
+    argv = xpra.attach_argv(
+        Node(name="vivo", host="thi-pc"), Hub(attach_opts=["--speaker=on"])
+    )
+    assert argv.index("--speaker=on") > argv.index("--speaker=off")
+
+
+def test_server_does_not_start_pulseaudio():
+    cmd = xpra.start_server_cmd(Node(name="vivo", host="thi-pc"))
+    assert "--pulseaudio=no" in cmd
+
+
+def test_parse_probe_detects_missing_xpra():
+    """Lỗi thật: máy chưa cài xpra nhưng doctor báo '✓ xpra ?'.
+
+    Nguyên nhân cũ là `xpra --version | head -1` — mã thoát của `head` luôn 0
+    nên không thể dùng nó để suy ra đã cài hay chưa.
+    """
+    p = xpra.parse_probe("ONEPANE_NO_XPRA\n")
+    assert p.installed is False
+    assert p.version is None
+    assert p.sessions == ""
+
+
+def test_parse_probe_treats_shell_error_as_missing():
+    # Nếu vì lý do gì đó chỉ nhận được lời than của shell, tuyệt đối không
+    # được coi là đã cài.
+    p = xpra.parse_probe("/bin/bash: line 1: xpra: command not found\n")
+    assert p.installed is False
+
+
+def test_parse_probe_reads_version_and_sessions():
+    out = (
+        "ONEPANE_XPRA xpra v6.5.2-r0\n"
+        "ONEPANE_SESSIONS\n"
+        "Found the following xpra sessions:\n"
+        "\tLIVE session at :100\n"
+        "\tDEAD session at :7\n"
+    )
+    p = xpra.parse_probe(out)
+    assert p.installed is True
+    assert p.version == (6, 5, 2)
+    assert xpra.session_state(p.sessions, ":100") == "LIVE"
+    assert xpra.session_state(p.sessions, ":7") == "DEAD"
+    assert xpra.session_state(p.sessions, ":101") == "NONE"
+
+
+def test_parse_probe_installed_but_no_sessions():
+    p = xpra.parse_probe("ONEPANE_XPRA xpra v6.5.2-r0\nONEPANE_SESSIONS\nNo xpra sessions found\n")
+    assert p.installed is True
+    assert xpra.session_state(p.sessions, ":100") == "NONE"
+
+
+def test_probe_cmd_does_not_rely_on_exit_code():
+    cmd = xpra.probe_cmd()
+    assert "command -v xpra" in cmd
+    assert xpra.MARK_MISSING in cmd
+
+
+def test_ssh_hint_points_at_tailscale_when_name_unresolvable():
+    """Đúng lỗi đã gặp thật: host đặt là 'vivo' nhưng tên Tailscale là 'thi-pc'."""
+    hint = xpra.ssh_hint("ssh: Could not resolve hostname vivo: Name or service not known", "vivo")
+    assert "tailscale status" in hint
+    assert "'vivo'" in hint
+
+
+def test_ssh_hint_distinguishes_auth_from_dns():
+    assert "ssh-copy-id thi@thi-pc" in xpra.ssh_hint("Permission denied (publickey).", "thi@thi-pc")
+    assert "sshd" in xpra.ssh_hint("connect: Connection refused", "thi-pc")
+
+
+def test_ssh_hint_for_offline_machine():
+    """Máy công ty tắt -> timeout, phải nói là máy tắt chứ không phải sai tên."""
+    hint = xpra.ssh_hint("ssh tới may-cty quá 20s không phản hồi", "may-cty")
+    assert "tắt" in hint and "tailscale status" not in hint
+
+
+def test_ssh_hint_falls_back_without_guessing():
+    assert xpra.ssh_hint("something nobody predicted", "may-cty") == "thử tay: ssh may-cty"
+
+
+def test_version_gap_flags_ubuntu_repo_vs_upstream():
+    """Bẫy hay gặp nhất: hub dùng xpra 3.1.5 của Ubuntu, máy con đã lên 6.x."""
+    gap = xpra.version_gap((3, 1, 5), (6, 2, 1))
+    assert gap is not None
+    assert "hub 3.1.5" in gap and "máy con 6.2.1" in gap
+    assert "hub cũ hơn máy con" in gap
+
+
+def test_version_gap_names_whichever_side_is_older():
+    gap = xpra.version_gap((6, 2, 1), (3, 1, 5))
+    assert "máy con cũ hơn hub" in gap
+
+
+def test_version_gap_silent_when_same_major():
+    assert xpra.version_gap((6, 2, 1), (6, 0)) is None
+    assert xpra.version_gap((3, 1, 5), (3, 1, 5)) is None
+
+
+def test_version_gap_silent_when_version_unknown():
+    # Không đọc được phiên bản thì im lặng còn hơn cảnh báo sai.
+    assert xpra.version_gap(None, (6, 2)) is None
+    assert xpra.version_gap((6, 2), None) is None
+
+
+def test_start_server_uses_start_alias_for_old_version_compat():
+    cmd = xpra.start_server_cmd(VIVO)
+    # `start` chứ không phải `seamless`: chạy được cả xpra 3.x lẫn 6.x.
+    assert cmd.startswith("xpra start :100")
+    assert "--daemon=yes" in cmd
+    assert "--sharing=yes" in cmd
+    # Không có --start-child thì phiên phải sống dù không còn ứng dụng nào.
+    assert "--exit-with-children=no" in cmd
+
+
+def test_start_server_includes_start_apps():
+    node = Node(name="a", host="a", start_apps=["xterm -title shell", "firefox"])
+    cmd = xpra.start_server_cmd(node)
+    assert "--start-child=xterm -title shell" in cmd
+    assert "--start-child=firefox" in cmd
+
+
+def test_launch_app_falls_back_when_control_unsupported():
+    cmd = xpra.launch_app_cmd(VIVO, ["firefox", "--new-window"])
+    assert "xpra control :100 start firefox" in cmd
+    # Bản cũ không có control command -> vẫn mở được bằng DISPLAY.
+    assert "DISPLAY=:100 setsid" in cmd
+    # setsid + tách stdio để app không chết theo phiên ssh.
+    assert "</dev/null" in cmd
+
+
+def test_launch_app_quotes_arguments_with_spaces():
+    cmd = xpra.launch_app_cmd(VIVO, ["xterm", "-title", "hai chu"])
+    assert "'hai chu'" in cmd
+
+
+def test_attach_argv_includes_node_label_in_title():
+    hub = Hub(title_format="@title@ · {node}")
+    argv = xpra.attach_argv(VIVO, hub)
+    assert argv[:3] == ["xpra", "attach", "ssh://thi@vivo/100"]
+    assert "--title=@title@ · vivo" in argv
+
+
+def test_attach_argv_omits_title_when_disabled():
+    argv = xpra.attach_argv(VIVO, Hub(title_format=""))
+    assert not any(a.startswith("--title") for a in argv)
+
+
+def test_attach_argv_appends_hub_options():
+    hub = Hub(title_format="", attach_opts=["--opengl=no"])
+    assert xpra.attach_argv(VIVO, hub)[-1] == "--opengl=no"
+
+
+def test_ssh_command_multiplexing_toggle():
+    with_mux = ssh_command(VIVO, Hub(ssh_multiplex=True))
+    assert "ControlMaster=auto" in with_mux
+    assert with_mux[-1] == "thi@vivo"
+
+    without = ssh_command(VIVO, Hub(ssh_multiplex=False))
+    assert "ControlMaster=auto" not in without
+
+
+def test_ssh_command_adds_port_only_when_non_default():
+    assert "-p" not in ssh_command(VIVO, Hub())
+    other = Node(name="a", host="a", ssh_port=2222)
+    argv = ssh_command(other, Hub())
+    assert argv[argv.index("-p") + 1] == "2222"
+
+
+def test_ssh_command_is_non_interactive():
+    """BatchMode để lệnh không treo chờ mật khẩu khi chạy doctor hàng loạt."""
+    assert "BatchMode=yes" in ssh_command(VIVO, Hub())
+
+
+def test_tmux_builds_one_window_per_entry():
+    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[VIVO])
+    cmds = tmux.build_commands(cfg, [("zalo quét · may-nha", "echo a"), ("acer", "echo b")])
+
+    assert cmds[0][:6] == ["tmux", "new-session", "-d", "-s", "cum", "-n"]
+    assert cmds[0][6] == "zalo quét · may-nha"
+    assert cmds[1][:6] == ["tmux", "new-window", "-t", "cum", "-n", "acer"]
+
+
+def test_tmux_window_reconnects_instead_of_closing():
+    cfg = Config(hub=Hub(), nodes=[VIVO])
+    body = tmux.shell_window_command(VIVO, cfg)
+    # Máy con tắt thì cửa sổ phải chờ và nối lại, không được biến mất.
+    assert body.startswith("while true; do")
+    assert "nối lại" in body
+
+
+def test_tmux_task_window_attaches_to_remote_session():
+    cfg = Config(hub=Hub(), nodes=[VIVO])
+    task = tasks.Task(node="vivo", name="zalo quét", windows=1, attached=False)
+    body = tmux.task_window_command(task, VIVO, cfg)
+    # Lệnh bị bọc thêm một lớp quote khi nhúng vào vòng lặp nối lại, nên chỉ
+    # kiểm tra các phần đặc trưng chứ không so nguyên chuỗi.
+    assert "attach-session" in body
+    assert "op-zalo" in body
+
+
+def test_hub_prefix_differs_from_inner_tmux():
+    """Hai tầng tmux cùng phím dẫn thì tầng trong không nhận được phím nào."""
+    cfg = Config(hub=Hub(tmux_session="cum"), nodes=[VIVO])
+    cmds = tmux.build_commands(cfg, [("x", "echo a")])
+    assert ["tmux", "set-option", "-t", "cum", "prefix", "C-a"] in cmds
+    assert tmux.HUB_PREFIX != "C-b"

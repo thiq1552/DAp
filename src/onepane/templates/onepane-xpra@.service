@@ -1,0 +1,19 @@
+[Unit]
+Description=onepane — phiên xpra seamless trên display :%i
+Documentation=https://github.com/Xpra-org/xpra/blob/master/docs/Usage/Seamless.md
+After=network-online.target
+
+[Service]
+Type=simple
+# --daemon=no: để systemd giữ tiến trình, nếu không nó tưởng service đã chết.
+ExecStart=/usr/bin/xpra start :%i \
+    --daemon=no \
+    --sharing=yes \
+    --exit-with-children=no \
+    --notifications=yes
+ExecStop=/usr/bin/xpra stop :%i
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,215 @@
+# onepane — nhiều máy, một màn hình
+
+Bạn có 4 máy nối bằng Tailscale. Hiện tại muốn đụng tới máy nào thì phải mở một
+phiên remote desktop riêng cho máy đó, và chuyển qua lại giữa các phiên rất cực.
+
+`onepane` gộp **phần hiển thị** của các máy lại: cửa sổ của máy `vivo` và cửa sổ
+của máy `cong-ty` nằm cạnh nhau trên cùng một desktop, cùng một thanh taskbar,
+cùng một clipboard — như thể chúng chạy trên máy bạn đang ngồi.
+
+**Phần cứng không gộp gì cả.** Firefox mở trên `vivo` vẫn ăn RAM của `vivo`,
+vẫn ghi vào đĩa của `vivo`. Chỉ có pixel và sự kiện bàn phím/chuột đi qua mạng.
+
+```
+       máy bạn đang ngồi (hub)
+    ┌───────────────────────────────┐
+    │  [Firefox·vivo] [term·acer]   │   ← cửa sổ thật, WM cục bộ quản lý
+    │  [VSCode·cong-ty]             │
+    └───────────────────────────────┘
+              ▲       ▲       ▲
+         ssh/Tailscale (WireGuard)
+              │       │       │
+           vivo   cong-ty   acer      ← ứng dụng chạy thật ở đây
+```
+
+## Vì sao là "seamless" chứ không phải remote desktop
+
+Remote desktop truyền cả một màn hình vào trong một khung hình chữ nhật — bạn
+được một cái desktop *lồng trong* desktop, phải chuyển toàn màn hình để đổi máy.
+
+xpra ở chế độ seamless truyền **từng cửa sổ một**. Cửa sổ đó do window manager
+*trên máy bạn* quản lý, nên kéo thả, phóng to, Alt-Tab, snap nửa màn hình đều
+chạy ở tốc độ cục bộ — độ trễ mạng không xen vào những thao tác này. Đó là khác
+biệt lớn nhất so với VNC/RDP.
+
+Thêm hai thứ đi kèm:
+
+- **Ứng dụng sống độc lập với kết nối.** Ngắt máy hub, mở lại từ máy khác (hoặc
+  điện thoại), mọi cửa sổ vẫn nguyên trạng thái. Phiên chạy dưới systemd với
+  `linger` nên sống qua cả lần khởi động lại máy.
+- **Clipboard dùng chung.** Copy ở máy này, dán ở máy kia, không cần nghĩ.
+
+## Và phần quan trọng hơn: task
+
+Nếu phần lớn việc bạn làm là Claude Code, build, đọc log — tức là terminal —
+thì **task** mới là thứ bạn dùng hàng ngày, không phải cửa sổ đồ hoạ.
+
+Một task là một terminal **có tên**, chạy trên **một máy cố định**, và **không
+chết khi bạn ngắt kết nối**. Bên dưới nó là một phiên tmux tên `op-<tên>` nằm
+trên chính máy con.
+
+```bash
+onepane task new may-nha "zalo quét"   # tạo
+onepane task ls                        # có gì, ở máy nào
+onepane task open "zalo quét"          # mở terminal của nó ngay tại đây
+onepane term                           # gom MỌI task về một màn hình
+```
+
+Ba tính chất suy ra từ thiết kế, không phải tính năng thêm vào:
+
+- **Task không bao giờ đổi máy.** Phiên nằm ở máy nào thì chạy ở máy đó. Việc
+  như quét Zalo bằng trình duyệt đã đăng nhập sẵn không thể bị kéo sang máy
+  khác làm mất phiên — vì chẳng có gì bị kéo đi cả.
+- **Task không chết khi mất kết nối.** Rớt mạng, đóng laptop, tắt hẳn máy hub —
+  tiến trình vẫn chạy tiếp. Nối lại là thấy đúng chỗ đang dở.
+- **Không có sổ ghi chép nào để lệch.** `task ls` hỏi thẳng `tmux ls` của từng
+  máy, nên danh sách luôn đúng thực tế.
+
+### Clipboard chảy giữa các máy
+
+Đây là chỗ cần một lớp kỹ thuật, không tự nhiên chạy.
+
+**Dán vào** thì luôn được — dán là gõ phím, đi qua ssh như mọi phím khác.
+**Copy ra** mới khó: chữ trên màn hình do tmux của *máy con* vẽ, nên bôi đen chỉ
+vào bộ đệm của tmux đó, không tới clipboard máy bạn đang ngồi.
+
+`onepane` bật **OSC 52** ở cả hai tầng tmux: nội dung đã copy được gói vào một
+escape sequence, chảy ngược qua ssh về terminal trên hub, terminal đặt vào
+clipboard hệ thống. Nhờ vậy copy kết quả từ task máy này, dán thẳng vào task máy
+kia — y như chạy nhiều terminal trên cùng một máy.
+
+Cần terminal hiểu OSC 52 (VTE 0.64+, tức GNOME Terminal trên Ubuntu 22.04 trở
+lên). Terminal quá cũ thì mọi thứ vẫn chạy, chỉ riêng copy không sang.
+
+### Hai tầng tmux, hai phím dẫn
+
+`onepane term` dựng tmux trên hub để gom cửa sổ, trong khi mỗi task đã là một
+tmux trên máy con. Hai tầng cùng phím `Ctrl-b` thì tầng trong không nhận được gì,
+nên tầng ngoài đổi sang **`Ctrl-a`**:
+
+| Phím | Tác dụng |
+|---|---|
+| `Ctrl-a` `1`/`2`/`3` | đổi task |
+| `Ctrl-a` `d` | thoát màn hình gom (mọi thứ vẫn chạy) |
+| `Ctrl-b` | tmux của máy con — chia pane, cuộn log |
+| `Ctrl-a` `Ctrl-a` | gửi `Ctrl-a` xuống ứng dụng bên trong |
+
+Cửa sổ nào cũng tự nối lại nếu máy con tắt hay ngủ — nó chờ và thử lại chứ không
+biến mất kéo theo vị trí của bạn.
+
+## Cài
+
+Trên **máy hub** (máy bạn ngồi trước):
+
+```bash
+pip install -e .            # trong thư mục repo này
+onepane setup --hub         # xpra (bản mới) + tmux + ssh client
+onepane init                # tạo ~/.config/onepane/config.ini
+```
+
+Đừng dùng `apt install xpra` cho hub: kho Ubuntu 24.04 dừng ở xpra 3.1.5, trong
+khi `onepane setup` cài 6.x lên máy con — client và server lệch hai thế hệ giao
+thức thì hỏng theo kiểu rất khó đoán. `setup --hub` thêm kho xpra.org rồi cài
+đúng bản, nên hai đầu khớp nhau. `onepane doctor` cũng kiểm tra chuyện này và
+báo nếu lệch.
+
+Sửa `config.ini` cho khớp máy của bạn — `host` là tên Tailscale (MagicDNS) hoặc
+IP `100.x.y.z`:
+
+```ini
+[node:vivo]
+host = vivo
+user = thi
+display = :100
+```
+
+Rồi cài lên các máy con và dựng phiên:
+
+```bash
+onepane doctor        # hub ổn chưa, ssh được chưa, xpra hai đầu có khớp không
+onepane setup --all   # cài xpra + systemd unit lên từng máy con (chạy lại được)
+onepane up --all      # dựng phiên
+onepane attach --all  # kéo cửa sổ về đây
+```
+
+### Về quyền sudo
+
+Hai vai trò khác nhau, đừng nhầm:
+
+- **Hub** (`setup --hub`) chạy tại chỗ, còn nguyên terminal, nên `sudo` cứ hỏi
+  mật khẩu bình thường và bạn gõ vào. Không cần chuẩn bị gì.
+- **Máy con** (`setup <tên>`) chạy qua `ssh` ở `BatchMode` — không có tty, không
+  có đường nào nhập mật khẩu. Nên máy con **bắt buộc** phải có sudo không mật
+  khẩu. Trên từng máy con, `sudo visudo` rồi thêm:
+
+  ```
+  <user> ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/wget, /usr/bin/loginctl
+  ```
+
+  Chỉ mở đúng ba lệnh cần cho việc cài, không mở toàn quyền.
+
+Ngoài ra `setup` cần **ssh bằng key, không hỏi mật khẩu** tới mọi máy con
+(`ssh-copy-id <user>@<host>` nếu chưa có).
+
+### Tên máy trong config
+
+`host` phải là tên Tailscale thật hoặc IP `100.x.y.z`, không phải nhãn bạn tự
+đặt. Nhãn nằm ở `[node:...]` và độc lập với `host` — nên `[node:vivo]` trỏ tới
+`host = thi-pc` là hoàn toàn hợp lệ, bạn vẫn gõ `onepane run vivo firefox`.
+Lấy tên thật bằng `tailscale status`; sai tên thì `doctor` sẽ nói thẳng.
+
+### Về phiên bản xpra
+
+Kho Ubuntu đóng băng xpra ở phiên bản của ngày phát hành — 24.04 dừng ở 3.1.5
+trong khi bản chính chủ đã 6.x. `onepane setup` tự thêm kho của xpra.org theo
+đúng codename của máy đó. Nếu kho chưa hỗ trợ codename ấy, script lùi về gói
+trong Ubuntu và in cảnh báo — vẫn chạy, chỉ là bản cũ hơn.
+
+Điều quan trọng: **hub và máy con phải cùng thế hệ.** Đó là lý do `setup --hub`
+tồn tại và `doctor` so phiên bản hai đầu. Máy nào đã lỡ cài gói distro thì script
+tự `--only-upgrade` lên bản của kho mới, vì `apt install` không tự nâng.
+
+Vì vậy mọi lệnh trong `onepane` dùng subcommand `xpra start` chứ không phải
+`xpra seamless`: từ v6 `seamless` là tên chính thức nhưng `start` vẫn là alias
+hợp lệ, mà `start` thì chạy được cả trên 3.x. Một lệnh đúng cho mọi phiên bản.
+
+## Dùng
+
+```bash
+onepane status              # bảng: máy nào online, phiên nào sống, đang nối máy nào
+onepane run vivo firefox    # mở firefox TRÊN vivo, cửa sổ hiện ở đây
+onepane term                # phiên tmux, mỗi máy một cửa sổ
+onepane detach vivo         # cất cửa sổ đi, ứng dụng bên vivo vẫn chạy
+onepane down vivo           # đóng hẳn phiên (mọi ứng dụng trong đó tắt theo)
+```
+
+`detach` và `down` khác nhau ở chỗ đó, và đây là chỗ dễ nhầm nhất: `detach` chỉ
+ngắt hiển thị, `down` giết phiên.
+
+## Giới hạn cần biết
+
+- **Không gộp RAM/CPU.** Một tiến trình vẫn bị giới hạn bởi RAM của máy nó chạy.
+  Gộp RAM thật qua mạng là chuyện không làm được: RAM ~100 nano giây, Tailscale
+  ~1–2 mili giây kể cả trong LAN — chậm hơn khoảng chục nghìn lần. Các dự án từng
+  thử (openMosix, Kerrighed) đều đã chết; thứ duy nhất làm được là CXL, và đó là
+  cáp phần cứng trong cùng một rack chứ không phải mạng.
+- **Video và game thì đừng.** xpra tốt cho cửa sổ giao diện thông thường. Xem
+  phim hay 3D thì dùng Sunshine + Moonlight, chúng mã hoá bằng phần cứng.
+- **macOS chỉ làm hub, không làm máy con.** xpra chạy được trên máy Mac ở vai trò
+  client, nhưng chế độ seamless server thì gắn với X11 nên chỉ có Linux. Máy Mac
+  của bạn vào cụm qua `onepane term` (tmux + ssh) là đủ.
+- **Ứng dụng Wayland thuần** không xuất hiện trong phiên xpra. Hầu hết app vẫn
+  chạy qua XWayland nên trong thực tế ít gặp; gặp thì đặt `GDK_BACKEND=x11`.
+- **Không có filesystem chung.** Đây là lớp giao diện. Chia sẻ file vẫn dùng
+  `ccbus` hoặc một thư mục NFS/Syncthing riêng.
+- **Bảo mật dựa hoàn toàn vào ssh.** Không mở cổng TCP nào. Đừng thêm
+  `--bind-tcp` mà không đọc kỹ phần xác thực của xpra.
+
+## Phát triển
+
+```bash
+PYTHONPATH=src python -m pytest tests/test_onepane_config.py tests/test_onepane_xpra.py
+```
+
+Test phủ phần logic thuần: parse cấu hình, dựng lệnh xpra/ssh/tmux, và đọc output
+của `xpra list`. Phần gọi ssh thật thì `onepane doctor` là công cụ kiểm tra.
