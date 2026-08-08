@@ -58,9 +58,12 @@ emit_configs() {
 /dev/mapper/$MAPPER  /          ext4    defaults,noatime,commit=600,errors=remount-ro 0      1
 UUID=$uuid_boot         /boot      ext4    defaults,noatime                              0      2
 UUID=$uuid_esp          /boot/efi  vfat    umask=0077                                    0      1
-tmpfs                   /tmp       tmpfs   defaults,noatime,nosuid,nodev,size=2G         0      0
-tmpfs                   /var/tmp   tmpfs   defaults,noatime,nosuid,nodev,size=1G         0      0
+tmpfs                   /tmp       tmpfs   defaults,noatime,nosuid,nodev,size=25%        0      0
+tmpfs                   /var/tmp   tmpfs   defaults,noatime,nosuid,nodev,size=10%        0      0
 EOF
+  # Dùng % chứ không phải số GB cố định: cái USB này cắm vào nhiều máy RAM khác
+  # nhau, và tmpfs chỉ chiếm RAM theo lượng thực dùng chứ không giữ trước, nên %
+  # là trần an toàn. Máy 16GB -> /tmp tối đa 4G; máy 8GB -> 2G.
 
   # discard để lệnh TRIM đi xuyên qua lớp LUKS xuống tới stick. Đánh đổi: ai cầm
   # được stick sẽ biết bao nhiêu phần đã dùng. Với stick thì độ bền đáng giá hơn.
