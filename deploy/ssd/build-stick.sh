@@ -58,12 +58,23 @@ emit_configs() {
 /dev/mapper/$MAPPER  /          ext4    defaults,noatime,commit=600,errors=remount-ro 0      1
 UUID=$uuid_boot         /boot      ext4    defaults,noatime                              0      2
 UUID=$uuid_esp          /boot/efi  vfat    umask=0077                                    0      1
-tmpfs                   /tmp       tmpfs   defaults,noatime,nosuid,nodev,size=25%        0      0
-tmpfs                   /var/tmp   tmpfs   defaults,noatime,nosuid,nodev,size=10%        0      0
+tmpfs                   /tmp       tmpfs   defaults,noatime,nosuid,nodev,size=20%        0      0
+tmpfs                   /var/tmp   tmpfs   defaults,noatime,nosuid,nodev,size=5%         0      0
+tmpfs                   /workspace tmpfs   defaults,noatime,nosuid,nodev,size=35%        0      0
 EOF
   # Dùng % chứ không phải số GB cố định: cái USB này cắm vào nhiều máy RAM khác
   # nhau, và tmpfs chỉ chiếm RAM theo lượng thực dùng chứ không giữ trước, nên %
-  # là trần an toàn. Máy 16GB -> /tmp tối đa 4G; máy 8GB -> 2G.
+  # là trần an toàn. Tổng trần 60% RAM; máy 16GB -> workspace 5.6G, /tmp 3.2G.
+  #
+  # /workspace là chỗ clone repo và build. Để nó trong RAM giải quyết đúng điểm
+  # yếu của USB flash: ghi ngẫu nhiên 4K chậm hai bậc so với SSD, mà git và
+  # trình biên dịch thì toàn ghi kiểu đó. Hệ quả phải nhớ: nội dung ở đây biến
+  # mất khi tắt máy — push trước khi poweroff.
+  mkdir -p "$root/etc/tmpfiles.d" "$root/workspace"
+  cat >"$root/etc/tmpfiles.d/workspace.conf" <<EOF
+# tmpfs mount lên là thuộc root; cấp lại quyền cho người dùng sau mỗi lần boot.
+d /workspace 0700 $USERNAME $USERNAME -
+EOF
 
   # discard để lệnh TRIM đi xuyên qua lớp LUKS xuống tới stick. Đánh đổi: ai cầm
   # được stick sẽ biết bao nhiêu phần đã dùng. Với stick thì độ bền đáng giá hơn.
@@ -187,6 +198,7 @@ EOF
 if [ "$DRY_RUN" -eq 1 ]; then
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT
+  USERNAME="${USERNAME:-<tên-đăng-nhập>}"   # --dry-run chạy trước khi bắt buộc --user
   emit_configs "$TMP" "AAAA-BBBB" "1111-2222-boot" "3333-4444-luks"
   log "Kế hoạch phân vùng cho ${DEV:-/dev/sdX}:"
   printf '    p1  512M  fat32  ESP        -> /boot/efi\n'
@@ -332,6 +344,9 @@ user="$(cut -d: -f1 /tmp/userpw)"
 useradd -m -s /bin/bash -G sudo,adm,plugdev,netdev "$user"
 chpasswd </tmp/userpw
 shred -u /tmp/userpw
+# Chỗ làm việc nằm trong RAM, không phải trên USB.
+ln -sfn /workspace "/home/$user/work"
+chown -h "$user:$user" "/home/$user/work"
 
 # Cấm mọi đường ngủ — máy phải chạy suốt buổi chiều sau khi bạn về.
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target

@@ -9,6 +9,60 @@ máy đã cài nó. Mọi thứ ở đây khác ở ba chỗ: bootloader đặt 
 theo driver của mọi phần cứng, và mọi tham chiếu đĩa đều bằng UUID. Ba việc đó
 nằm trong [`lib-portable.sh`](lib-portable.sh), dùng chung cho cả hai đường dưới.
 
+## Phương án tối ưu
+
+Dữ kiện: máy công ty cấp chạy Windows, RAM 16GB. Một USB 64GB (còn dư vài cái).
+Máy Ubuntu ở nhà để dựng. Tiêu chí cứng: **ngày bàn giao máy lại cho công ty,
+không được sót một byte nào của bạn trên đó.**
+
+Phương án: **đường A, cộng ba điều chỉnh.**
+
+**1. Thư mục làm việc nằm trong RAM.** `/workspace` (có symlink `~/work`) là tmpfs
+35% RAM — trên máy 16GB là 5.6GB. Clone repo vào đó, build ở đó. Điều này vá đúng
+điểm yếu duy nhất của USB flash: ghi ngẫu nhiên 4K chậm hơn SSD hai bậc, mà `git`
+và trình biên dịch thì toàn ghi kiểu đó. USB chỉ còn chứa hệ điều hành và
+credential, gần như chỉ đọc — chạy nhanh hơn hẳn và sống lâu hơn nhiều.
+Đổi lại: **push xong hãy tắt máy**, nội dung `/workspace` mất khi poweroff.
+
+**2. Không đăng nhập ở console.** Sau khi gõ passphrase LUKS, cứ để nguyên màn
+hình login rồi đi về. `tailscaled` và `sshd` là service hệ thống, chúng tự lên
+không cần ai đăng nhập. Bạn SSH từ nhà vào. Như vậy không có phiên mở sẵn cho
+người đi ngang qua bàn — thao tác duy nhất phải làm ở máy công ty là gõ passphrase.
+
+**3. Dùng boot menu một lần (`F12`), tuyệt đối không đổi boot order trong BIOS.**
+Đổi thứ tự boot là ghi vào NVRAM của máy và **nằm lại đó vĩnh viễn** — đúng loại
+dấu vết bạn muốn tránh. Boot menu một lần thì không ghi gì.
+
+### Vì sao không phải bản chạy trong RAM
+
+Vì nó **không cải thiện tiêu chí của bạn**. Đường A đã ghi 0 byte lên ổ công ty:
+`protect-internal-disks.service` khoá chỉ-đọc mọi ổ không phải USB ngay lúc boot,
+kernel từ chối cả `dd` chạy bằng root. Swap nằm trong zram nên nội dung RAM cũng
+không rơi xuống đĩa. Không có gì để bản RAM làm sạch hơn nữa.
+
+Cái nó thật sự đổi được chỉ là *rút USB mang về ngay sau khi boot*. Nhưng USB đã
+mã hoá LUKS — để lại trong máy qua đêm thì ai cầm được cũng không đọc nổi. Đổi lại
+bạn mất persistence: mất điện là mất sạch, kể cả credential, phải setup lại từ đầu.
+Cộng thêm chi phí dựng: `toram` từ phân vùng LUKS cần initramfs tuỳ biến, một bản
+dựng khác hẳn.
+
+Điều chỉnh 1 lấy được phần lợi thật sự của nó (tốc độ RAM cho việc hay ghi) mà
+không phải trả cái giá nào.
+
+### Ngày bàn giao máy
+
+Không phải làm gì cả — không có gì để xoá, vì chưa từng có gì được ghi. Rút USB
+ra là xong. Muốn tự trấn an thì boot Windows lên xem ngày sửa đổi của ổ C:.
+
+Những thứ **không** nằm trên máy nên cũng không xoá được: DHCP lease trên router
+công ty có ghi MAC và hostname, và một số BIOS ghi log thiết bị đã từng boot. Cả
+hai đều ngoài tầm của hệ điều hành.
+
+### USB dư dùng làm gì
+
+Dựng cái thứ hai y hệt bằng cùng một lệnh, để sẵn ở nhà. USB flash chết đột ngột
+là chuyện thường, và bạn sẽ không muốn phát hiện điều đó vào 6 giờ chiều ở công ty.
+
 ## Gọi tên cho khỏi lẫn
 
 | Tên trong tài liệu | Là cái gì |
@@ -245,9 +299,25 @@ thay đổi khi boot hệ điều hành khác. Không xoá được từ phía h
 
 ## A4. Quy trình dùng hàng ngày
 
-Trước khi về, ở máy công ty: cắm USB → boot menu → passphrase → đăng nhập →
-kiểm tra `tailscale status` thấy online → để đó, không tắt màn hình cũng được.
-Về nhà thì `ssh cong-ty` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`.
+Ở máy công ty, sau khi tắt hẳn Windows — **đúng ba thao tác**:
+
+1. Cắm USB, bật máy, bấm `F12` chọn USB (đừng đổi boot order trong BIOS)
+2. Gõ passphrase LUKS
+3. Đi về — **không đăng nhập ở console**
+
+`tailscaled` và `sshd` là service hệ thống, tự lên sau khi ổ đĩa được mở khoá,
+không cần ai đăng nhập. Để nguyên màn hình login thì không có phiên mở sẵn cho
+người đi ngang qua bàn.
+
+Về nhà thì `ssh cong-ty` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`. Làm
+việc trong `~/work` (chính là `/workspace`, nằm trong RAM):
+
+```bash
+ssh cong-ty
+cd ~/work && git clone <repo> && cd <repo>
+```
+
+**Push xong hãy tắt máy** — `/workspace` là tmpfs, poweroff là sạch.
 
 Kết thúc thì tắt sạch, từ nhà cũng được:
 
