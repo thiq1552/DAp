@@ -70,6 +70,27 @@ biến mất sau mỗi lần tắt. Với mục đích "để máy chạy task" 
 > máy Ubuntu đang chạy chứ không qua trình cài đặt nào. Mọi chữ "USB" dưới đây
 > đều trỏ vào đúng cái đó. (Đường B mới cần hai thiết bị: một USB cài đặt và ổ SSD.)
 
+## Nó KHÔNG phải cái gì
+
+Ba hiểu nhầm dễ mắc, vì cái USB này trông giống mấy thứ khác:
+
+**Không phải phần mềm cắm vào Windows đang chạy.** Cái USB *là* một hệ điều hành,
+không phải chương trình để Windows cài. Cắm vào máy đang chạy Windows thì Windows
+chỉ thấy một ổ đĩa lạ nó không đọc nổi (ext4 trong LUKS). Muốn dùng phải **tắt hẳn
+Windows rồi khởi động lại từ USB**.
+
+**Windows và Ubuntu không chạy song song.** Boot từ USB nghĩa là Windows đang tắt.
+Không có chuyện vừa làm việc trên Windows vừa để Ubuntu chạy nền — tại một thời
+điểm máy chỉ là cái này hoặc cái kia.
+
+**Không cài gì lên máy rồi rút USB ra.** USB là ổ root; rút nó ra cũng như rút ổ
+cứng của máy đang chạy. Nó phải cắm suốt thời gian máy chạy.
+
+Ràng buộc gốc: hệ điều hành phải nằm ở đâu đó. Hoặc **trên USB** — thì USB phải ở
+lại trong máy. Hoặc **trên ổ cứng máy công ty** — thì trái mục tiêu không để lại
+dấu vết. Cách duy nhất thoát khỏi lựa chọn này là nạp toàn bộ hệ thống vào RAM rồi
+rút USB, nhưng đó là một bản dựng khác hẳn, chưa làm ở đây.
+
 ## A0. Máy công ty cấp — cần cài gì?
 
 **Không cài gì cả.** Windows trên máy đó không bị đụng tới: không cài phần mềm,
