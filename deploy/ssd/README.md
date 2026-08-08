@@ -1,16 +1,127 @@
-# Ubuntu chạy từ SSD ngoài — cắm máy nào cũng boot
+# Ubuntu chạy từ ổ ngoài — cắm máy nào cũng boot
 
-Dựng một ổ SSD USB chứa Ubuntu mã hoá toàn ổ, boot được trên **acer**, **vivo**,
+Dựng một ổ USB chứa Ubuntu mã hoá LUKS, boot được trên **acer**, **vivo**,
 **cong-ty** — và nối vào bảng tin `ccbus` như máy thứ 5 tên `ssd`.
 
 Ổ do trình cài đặt Ubuntu tạo ra theo cách thông thường chỉ boot được đúng cái
-máy đã cài nó. Tài liệu này khác ở ba chỗ: bootloader đặt ở đường dẫn di động
+máy đã cài nó. Mọi thứ ở đây khác ở ba chỗ: bootloader đặt ở đường dẫn di động
 (`/EFI/BOOT/BOOTX64.EFI`) nên không phụ thuộc NVRAM của máy nào, initramfs mang
-theo driver của mọi phần cứng, và mọi tham chiếu đĩa đều bằng UUID.
+theo driver của mọi phần cứng, và mọi tham chiếu đĩa đều bằng UUID. Ba việc đó
+nằm trong [`lib-portable.sh`](lib-portable.sh), dùng chung cho cả hai đường dưới.
+
+## Chọn đường nào
+
+| | **A. USB stick sẵn có** | **B. SSD trong box** |
+|---|---|---|
+| Script | [`build-stick.sh`](build-stick.sh) | [`make-portable.sh`](make-portable.sh) |
+| Cách dựng | `debootstrap` thẳng từ máy Ubuntu ở nhà | Trình cài đặt Ubuntu + USB cài đặt |
+| Cần thêm gì | Không — một stick là đủ | Phải mua SSD + box, cần thêm USB cài đặt |
+| Giao diện | Console, không GUI | Desktop đầy đủ |
+| Hợp với | Để máy chạy task qua buổi chiều, không lưu file | Dùng như máy làm việc di động |
+
+Đường **A** không có trình cài đặt tham gia, nên cái bẫy lớn nhất của đường B —
+bootloader bị ghi nhầm vào ổ trong của máy — không tồn tại. Cũng không phải rút
+ổ trong ra. Nếu bạn chỉ cần *máy chạy*, đi đường A.
 
 > **Không dùng được trên Mac Apple Silicon.** Firmware của Apple không cho boot
-> hệ điều hành khác từ thiết bị ngoài. Máy `mac` trong nhóm sẽ không cắm ổ này
-> được — đó là giới hạn phần cứng, không có cách vòng.
+> hệ điều hành khác từ thiết bị ngoài. Máy `mac` trong nhóm sẽ không cắm được —
+> đó là giới hạn phần cứng, không có cách vòng.
+
+---
+
+# Đường A — USB stick, dựng bằng debootstrap
+
+Hệ thống thu được: Ubuntu Server mã hoá LUKS, không GUI, **ghi xuống stick rất
+ít**. USB stick có ghi ngẫu nhiên 4K cực chậm (0.3–1 MB/s, kém SSD hai bậc) và
+không có wear leveling tử tế, nên chạy Ubuntu Desktop lên stick là đơ liên tục và
+chết stick sau vài tuần. Cấu hình dưới đây né gần hết chỗ ghi:
+
+| Thiết lập | Tác dụng |
+|---|---|
+| Không cài desktop | Bỏ nguồn ghi nền lớn nhất |
+| `journald Storage=volatile` | Log nằm trong RAM, mất khi tắt máy — bạn không cần lưu |
+| `/tmp`, `/var/tmp` là tmpfs | Ghi tạm không chạm stick |
+| zram thay swap | Swap trên stick là án tử cho nó |
+| `commit=600` | ext4 gom ghi 10 phút mới xả một lần |
+| `noatime` | Không ghi lại thời điểm truy cập mỗi lần đọc file |
+| Tắt unattended-upgrades | Không tự cập nhật ngầm lúc nửa đêm |
+
+Đánh đổi: rút nóng hoặc mất điện thì mất tối đa 10 phút thay đổi cuối, và log
+biến mất sau mỗi lần tắt. Với mục đích "để máy chạy task" thì cả hai đều không sao.
+
+## A1. Trên máy Ubuntu ở nhà
+
+```bash
+sudo apt install debootstrap cryptsetup-bin gdisk dosfstools parted
+lsblk -o NAME,SIZE,TRAN,MODEL          # tìm đúng tên stick
+```
+
+Xem trước kế hoạch, **chưa đụng gì vào stick**:
+
+```bash
+sudo ./deploy/ssd/build-stick.sh /dev/sdX --dry-run
+```
+
+Nó in ra bảng phân vùng dự kiến và toàn bộ nội dung `/etc/fstab`, `/etc/crypttab`
+sẽ ghi. Đọc kỹ rồi mới chạy thật:
+
+```bash
+sudo ./deploy/ssd/build-stick.sh /dev/sdX --user <tên-đăng-nhập> --hostname ssd
+```
+
+Script hỏi ba thứ: gõ lại đúng đường dẫn thiết bị để xác nhận (đây là lớp bảo vệ
+thật sự — nó sẽ **xoá sạch** thiết bị đó), passphrase LUKS, và mật khẩu đăng nhập.
+Sau đó chạy khoảng 15–30 phút tuỳ mạng.
+
+Phân vùng nó tạo:
+
+```
+p1   512M   fat32   ESP        -> /boot/efi
+p2   1.5G   ext4    /boot       (không mã hoá — GRUB phải đọc được)
+p3   còn lại LUKS2 -> ext4 -> / (mở bằng passphrase lúc boot)
+```
+
+Không có phân vùng swap: swap nằm trong RAM qua zram. Không có LVM: chỉ một
+filesystem trong LUKS, đỡ một tầng phức tạp không dùng đến.
+
+## A2. Boot thử ngay tại nhà
+
+Đừng mang thẳng lên công ty. Tắt máy, cắm lại stick, vào boot menu chọn nó, gõ
+passphrase, đăng nhập. Rồi nối mạng và nối bảng tin:
+
+```bash
+nmtui                                   # chọn Wi-Fi
+sudo tailscale up                       # nếu 4 máy kia đang dùng Tailscale
+curl -fsSL https://claude.ai/install.sh | bash
+./deploy/setup-client.sh http://100.x.y.z:7717 <token-ssd> ten-project
+```
+
+Token lấy từ máy chủ ccbus bằng `./deploy/add-agent.sh ssd` — lệnh đó cấp token
+cho máy mới mà không xoay token của 4 máy đang chạy.
+
+## A3. Quy trình dùng hàng ngày
+
+Trước khi về, ở máy công ty: cắm stick → boot menu → passphrase → đăng nhập →
+kiểm tra `tailscale status` thấy online → để đó, không tắt màn hình cũng được.
+Về nhà thì `ssh ssd` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`.
+
+Ba chỗ kế hoạch có thể vỡ, biết trước thì đỡ mất buổi:
+
+**Bạn phải có mặt để boot.** Cắm stick, chọn boot menu, gõ passphrase — đều cần
+tay người. Không có cách boot nó từ xa.
+
+**LUKS chặn khởi động lại tự động.** Máy reboot vì bất kỳ lý do gì — mất điện, IT
+đẩy update — là dừng ở màn hình hỏi passphrase cho tới sáng hôm sau. Đó là cái
+giá của mã hoá; đổi lại, ai rút stick mang đi cũng không đọc được token ccbus và
+SSH key của bạn.
+
+**Máy phải không được ngủ.** Script đã `mask` sẵn suspend/hibernate và đặt đóng
+nắp laptop không ngủ. Nhưng BIOS máy công ty có thể có lịch tự tắt máy theo giờ —
+cái đó nằm ngoài tầm với của hệ điều hành, phải kiểm tra trong BIOS.
+
+---
+
+# Đường B — SSD trong box
 
 ## Chuẩn bị
 
@@ -60,7 +171,7 @@ sudo hdparm -t --direct /dev/sdX     # kỳ vọng 800–1000 MB/s ở cổng 10
 Cả hai trường hợp đều nên đổi cổng trước, còn không thì trả hàng — đừng cài
 Ubuntu lên rồi mới phát hiện.
 
-## 1. Tạo USB cài đặt
+## B1. Tạo USB cài đặt
 
 ```bash
 # Trên một máy Ubuntu sẵn có. Kiểm tra kỹ tên thiết bị trước khi ghi.
@@ -71,7 +182,7 @@ sudo dd if=ubuntu-24.04-desktop-amd64.iso of=/dev/sdX bs=4M status=progress ofla
 `/dev/sdX` là **cả ổ USB**, không phải phân vùng (`sdX1`). Ghi nhầm vào ổ hệ
 thống là mất máy.
 
-## 2. Rút ổ trong ra trước khi cài
+## B2. Rút ổ trong ra trước khi cài
 
 Đây là bước dễ bỏ qua nhất và cũng là bước hay làm hỏng cả kế hoạch. Trình cài
 đặt Ubuntu có thói quen đặt bootloader vào phân vùng EFI của **ổ đầu tiên nó
@@ -90,7 +201,7 @@ Nếu không làm được cả hai thì đừng cài trực tiếp — nhắn t
 Tiện lúc ở trong BIOS, bật sẵn: **UEFI mode** (tắt CSM/Legacy), và ghi nhớ phím
 mở boot menu — Acer `F12`, Lenovo `F12`, Dell `F12`, HP `F9`.
 
-## 3. Cài Ubuntu lên ổ SSD
+## B3. Cài Ubuntu lên ổ SSD
 
 Cắm cả USB cài đặt lẫn ổ SSD, boot từ USB, chọn *Install Ubuntu*.
 
@@ -107,7 +218,7 @@ Tới phần chọn ổ đĩa:
 Layout thu được: ESP (fat32) + `/boot` (ext4, không mã hoá) + LUKS chứa LVM với
 root và swap. Đúng cái ta cần.
 
-## 4. Biến nó thành ổ di động
+## B4. Biến nó thành ổ di động
 
 Boot vào Ubuntu vừa cài trên ổ SSD (vẫn ở máy dùng để cài), nối mạng, rồi:
 
@@ -133,7 +244,7 @@ Script chạy lại được nhiều lần, không hỏng gì.
 Xong thì tắt máy, lắp lại ổ trong, kiểm tra máy đó vẫn boot Windows/Ubuntu cũ
 bình thường.
 
-## 5. Thử trên máy khác
+## B5. Thử trên máy khác
 
 Cắm ổ vào `vivo` hoặc `cong-ty`, mở boot menu, chọn dòng có tên box USB.
 
@@ -152,7 +263,7 @@ Cắm vào `cong-ty` trước khi hỏi IT là chuyện riêng của bạn, như
 Windows đòi recovery key ở lần khởi động sau. Lấy sẵn key từ tài khoản công ty
 trước khi động vào BIOS.
 
-## 6. Nối vào bảng tin ccbus
+## B6. Nối vào bảng tin ccbus
 
 Trên **máy chủ** ccbus, cấp token cho máy mới mà không đụng token các máy đang chạy:
 

@@ -11,6 +11,9 @@
 # Script này sửa cả ba, cộng vài thứ riêng của ổ USB (autosuspend, TRIM, noatime).
 set -euo pipefail
 
+# shellcheck source=deploy/ssd/lib-portable.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-portable.sh"
+
 log()  { printf '==> %s\n' "$*"; }
 warn() { printf '!!  %s\n' "$*" >&2; }
 die()  { printf 'LỖI: %s\n' "$*" >&2; exit 1; }
@@ -53,17 +56,8 @@ apt-get install -y --no-install-recommends bcmwl-kernel-source >/dev/null 2>&1 \
   || warn "Không cài được bcmwl-kernel-source (bỏ qua — chỉ cần cho Wi-Fi Broadcom)."
 
 # --------------------------------------------- 2. initramfs chứa mọi driver
-log "Đặt MODULES=most để initramfs mang theo driver của mọi máy"
-CONF=/etc/initramfs-tools/initramfs.conf
-if grep -q '^MODULES=' "$CONF"; then
-  sed -i 's/^MODULES=.*/MODULES=most/' "$CONF"
-else
-  echo 'MODULES=most' >>"$CONF"
-fi
-
-log "Tắt hibernate (RESUME trỏ sai máy sẽ làm treo ~30s mỗi lần boot)"
-mkdir -p /etc/initramfs-tools/conf.d
-echo 'RESUME=none' >/etc/initramfs-tools/conf.d/resume
+log "Đặt MODULES=most và tắt hibernate (xem lib-portable.sh)"
+portable_initramfs_conf
 
 # ------------------------------------------- 3. crypttab/fstab phải dùng UUID
 log "Kiểm tra /etc/fstab và /etc/crypttab không tham chiếu tên thiết bị cố định"
@@ -123,31 +117,9 @@ GRUB_TIMEOUT_STYLE=menu
 EOF
 
 # ------------------------------------------ 5. bootloader ở đường dẫn di động
-# Firmware UEFI của MỌI máy đều tự tìm <ESP>/EFI/BOOT/BOOTX64.EFI khi boot thiết
-# bị rời — không cần entry trong NVRAM. Đặt shim đã ký của Ubuntu vào đó thì ổ
-# vẫn boot được cả khi máy đích đang bật Secure Boot.
-log "Cài bootloader vào đường dẫn di động $ESP/EFI/BOOT/"
-mkdir -p "$ESP/EFI/BOOT"
-SHIM=/usr/lib/shim/shimx64.efi.signed
-[ -f "$SHIM" ] || SHIM=/usr/lib/shim/shimx64.efi.signed.latest
-GRUB_SIGNED=/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed
-
-if [ -f "$SHIM" ] && [ -f "$GRUB_SIGNED" ]; then
-  # shim đã ký của Ubuntu -> boot được với Secure Boot BẬT.
-  # grubx64.efi.signed có prefix cố định /EFI/ubuntu nên vẫn đọc đúng grub.cfg ở đó.
-  install -m 644 "$SHIM" "$ESP/EFI/BOOT/BOOTX64.EFI"
-  install -m 644 "$GRUB_SIGNED" "$ESP/EFI/BOOT/grubx64.efi"
-  [ -f /usr/lib/shim/mmx64.efi.signed ] \
-    && install -m 644 /usr/lib/shim/mmx64.efi.signed "$ESP/EFI/BOOT/mmx64.efi"
-  [ -f "$ESP/EFI/ubuntu/grub.cfg" ] \
-    || warn "Không thấy $ESP/EFI/ubuntu/grub.cfg — chạy \`update-grub\` rồi kiểm tra lại."
-  log "    Dùng shim đã ký: ổ boot được cả khi máy đích bật Secure Boot."
-  SECUREBOOT_OK=yes
-else
-  warn "Không có shim-signed. Dùng grub-install --removable (chỉ boot khi Secure Boot TẮT)."
-  grub-install --target=x86_64-efi --efi-directory="$ESP" --removable --recheck
-  SECUREBOOT_OK=no
-fi
+log "Cài bootloader vào đường dẫn di động $ESP/EFI/BOOT/ (xem lib-portable.sh)"
+portable_bootloader "$ESP"
+SECUREBOOT_OK="$PORTABLE_SECUREBOOT"
 
 log "Cập nhật grub.cfg và initramfs (bước này lâu)"
 update-grub
