@@ -188,9 +188,23 @@ kệ nó, đừng tắt. Nó chỉ gây hỏng dữ liệu nếu Linux mount ổ
 
 ## A1. Trên máy Ubuntu ở nhà
 
+Cắm USB vào `acer` hoặc `vivo` — máy nào chạy Ubuntu cũng được, không khác gì
+nhau. Rồi chạy bản kiểm tra trước; nó **chỉ đọc**, không ghi vào đâu:
+
+```bash
+./deploy/ssd/preflight.sh
+```
+
+Nó trả lời bốn câu: máy này có đủ công cụ chưa (thiếu thì in sẵn lệnh `apt`),
+`debootstrap` có biết bản `noble` không, có tải được kho Ubuntu không, và **thiết
+bị nào là USB của bạn** — kèm cảnh báo rõ ổ nào là ổ hệ thống để bạn không trỏ
+nhầm. Cột `SPEED` là tốc độ cổng đang cắm: `480` là USB 2.0 (đổi cổng đi),
+`5000` trở lên là USB 3.x.
+
+Thiếu công cụ thì cài:
+
 ```bash
 sudo apt install debootstrap cryptsetup-bin gdisk dosfstools parted
-lsblk -o NAME,SIZE,TRAN,MODEL          # tìm đúng tên USB
 ```
 
 Xem trước kế hoạch, **chưa đụng gì vào USB**:
