@@ -1,7 +1,7 @@
 # Ubuntu chạy từ ổ ngoài — cắm máy nào cũng boot
 
 Dựng một ổ USB chứa Ubuntu mã hoá LUKS, boot được trên **acer**, **vivo**,
-**cong-ty** — và nối vào bảng tin `ccbus` như máy thứ 5 tên `ssd`.
+**cong-ty** — và lên bảng tin `ccbus` bằng token của agent `cong-ty` đã có sẵn.
 
 Ổ do trình cài đặt Ubuntu tạo ra theo cách thông thường chỉ boot được đúng cái
 máy đã cài nó. Mọi thứ ở đây khác ở ba chỗ: bootloader đặt ở đường dẫn di động
@@ -16,14 +16,17 @@ nằm trong [`lib-portable.sh`](lib-portable.sh), dùng chung cho cả hai đư�
 | **USB** (trong tên script là `stick`) | Cái USB 64GB của bạn. Sau khi dựng xong, **nó chính là hệ điều hành** — không phải bộ cài, không phải ổ chứa file |
 | **Máy nhà** | Máy Ubuntu ở nhà bạn. Chỉ dùng một lần, để dựng cái USB |
 | **Máy công ty cấp** | Laptop/PC công ty giao, đang chạy **Windows**. Chỉ cho USB mượn CPU. Không cài gì lên nó, không sửa gì trong nó |
-| `ssd` | Tên của hệ thống-trên-USB khi nó lên bảng tin ccbus |
-
-Lưu ý `ssd` chỉ là một cái tên — hệ thống này nằm trên USB, không liên quan gì
-tới ổ SSD của đường B. Muốn tên khác thì đổi `--hostname` lúc dựng.
+| `cong-ty` | Tên của hệ thống-trên-USB trên bảng tin ccbus. **Lấy từ token, không phải từ hostname** |
 
 Bốn máy `acer`, `vivo`, `cong-ty`, `mac` là các agent đã có sẵn trên ccbus từ
 trước. **Máy công ty cấp không phải một agent** — nó chỉ là phần cứng; agent
 chính là cái USB, dù nó đang cắm ở máy nào.
+
+Tên agent đến từ **token**, không phải từ hostname: `resolve_agent()` trong
+[`src/ccbus/server.py`](../../src/ccbus/server.py) tra bearer token ra tên máy.
+Nên cái USB dùng token `cong-ty` có sẵn là nó lên bảng tin đúng tên đó — không
+phải cấp token mới, không phải sửa gì trên máy chủ. `--hostname` chỉ là tên máy
+tự gọi mình ở local (dấu nhắc shell, SSH, DHCP lease); đặt trùng cho đỡ lẫn thôi.
 
 ## Chọn đường nào
 
@@ -146,7 +149,7 @@ Nó in ra bảng phân vùng dự kiến và toàn bộ nội dung `/etc/fstab`,
 sẽ ghi. Đọc kỹ rồi mới chạy thật:
 
 ```bash
-sudo ./deploy/ssd/build-stick.sh /dev/sdX --user <tên-đăng-nhập> --hostname ssd
+sudo ./deploy/ssd/build-stick.sh /dev/sdX --user <tên-đăng-nhập> --hostname cong-ty
 ```
 
 Script hỏi ba thứ: gõ lại đúng đường dẫn thiết bị để xác nhận (đây là lớp bảo vệ
@@ -182,11 +185,20 @@ Vào được rồi thì nối mạng và nối bảng tin:
 nmtui                                   # chọn Wi-Fi
 sudo tailscale up                       # nếu 4 máy kia đang dùng Tailscale
 curl -fsSL https://claude.ai/install.sh | bash
-./deploy/setup-client.sh http://100.x.y.z:7717 <token-ssd> ten-project
+./deploy/setup-client.sh http://100.x.y.z:7717 <token-cong-ty> ten-project
 ```
 
-Token lấy từ máy chủ ccbus bằng `./deploy/add-agent.sh ssd` — lệnh đó cấp token
-cho máy mới mà không xoay token của 4 máy đang chạy.
+Token `cong-ty` **đã có sẵn** từ lần chạy `setup-host.sh acer vivo cong-ty mac`
+đầu tiên. Lấy lại nó trên máy chủ ccbus:
+
+```bash
+grep CCBUS_TOKENS ~/.ccbus/env      # dạng: acer:...,vivo:...,cong-ty:<token>,mac:...
+```
+
+Không cần cấp token mới, không sửa gì trên máy chủ. Chỉ khi bạn muốn cái USB là
+một agent **riêng** — đứng cạnh `cong-ty` chứ không phải là nó — thì mới dùng
+`./deploy/add-agent.sh <tên>`, lệnh đó thêm token mà không xoay token của 4 máy
+đang chạy.
 
 ## A3. Máy công ty còn lại gì sau khi rút USB
 
@@ -216,7 +228,7 @@ chạy sẽ biến hệ thống thành chỉ-đọc giữa chừng.
 
 Nói thẳng, vì "không lưu gì" chỉ đúng với ổ đĩa:
 
-**Mạng công ty thấy bạn.** Máy xin DHCP thì lease ghi lại MAC và hostname `ssd`
+**Mạng công ty thấy bạn.** Máy xin DHCP thì lease ghi lại MAC và hostname `cong-ty`
 trên router/DHCP server. Traffic Tailscale là UDP mã hoá — nội dung thì không ai
 đọc được, nhưng việc *có* traffic thì hiện rõ. Đây là dấu vết nằm ngoài cái máy,
 khoá ổ đĩa không giải quyết được.
@@ -235,12 +247,12 @@ thay đổi khi boot hệ điều hành khác. Không xoá được từ phía h
 
 Trước khi về, ở máy công ty: cắm USB → boot menu → passphrase → đăng nhập →
 kiểm tra `tailscale status` thấy online → để đó, không tắt màn hình cũng được.
-Về nhà thì `ssh ssd` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`.
+Về nhà thì `ssh cong-ty` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`.
 
 Kết thúc thì tắt sạch, từ nhà cũng được:
 
 ```bash
-ssh ssd sudo poweroff
+ssh cong-ty sudo poweroff
 ```
 
 Sáng hôm sau ra rút USB. Máy bật lại là vào Windows như chưa có gì xảy ra.
