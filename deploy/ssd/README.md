@@ -16,16 +16,49 @@ theo driver của mọi phần cứng, và mọi tham chiếu đĩa đều bằn
 
 | Món | Yêu cầu | Vì sao |
 |---|---|---|
-| SSD NVMe | 500GB–1TB | 256GB đủ chạy nhưng chật khi build |
-| Box USB | 3.2 Gen2 10Gbps, chipset **RTL9210B** hoặc **JMS583** | Hai chipset này hỗ trợ UASP + TRIM. Box 5Gbps đời cũ chậm và không TRIM được → SSD xuống cấp nhanh |
+| SSD NVMe | **1TB, Gen3, có DRAM** — vd. Samsung 970 EVO Plus hoặc SK Hynix Gold P31 | Xem mục dưới: ổ DRAM-less mất HMB khi cắm qua USB |
+| Box USB | 3.2 Gen2 10Gbps, chipset **RTL9210B** (ưu tiên) hoặc **JMS583** | Cả hai có UASP + TRIM; RTL9210B mát hơn và biết ngủ khi rảnh. Box 5Gbps đời cũ chậm và thường không TRIM → SSD xuống cấp nhanh |
 | Thermal pad | Loại đi kèm box | NVMe trong vỏ kín rất nóng, quá nhiệt sẽ throttle |
 | Cáp | USB-C↔C **và** một đầu C↔A | Máy cũ có thể chỉ còn cổng USB-A |
 | USB stick | ≥ 8GB | Chứa bộ cài |
 | ISO | Ubuntu **24.04 LTS** Desktop | Bản LTS cũ hơn có driver ổn định trên nhiều đời máy hơn bản mới nhất. Nếu phần cứng quá mới thì mới cần LTS đời sau |
 
+### Vì sao SSD phải có DRAM
+
+USB 10Gbps chặn trần ở khoảng 1000 MB/s, nên bất kỳ SSD Gen3/Gen4 đời gần đây
+nào cũng thừa sức bão hoà cổng — tiền đổ vào SSD cao cấp bị cổng USB ăn hết.
+Tiêu chí đáng quan tâm không phải tốc độ tuần tự, mà là **cache bảng ánh xạ**.
+
+Các ổ giá tốt hiện nay (WD SN770/SN570, Kingston NV2, Crucial P3) đều DRAM-less
+và bù bằng **HMB** — mượn RAM của máy qua PCIe. HMB chỉ chạy khi ổ cắm thẳng vào
+khe M.2; qua USB thì cầu nối không chuyển tiếp được cơ chế này, ổ chạy hoàn toàn
+không cache. Ghi tuần tự vẫn đẹp, nhưng ghi ngẫu nhiên và thao tác nhiều file nhỏ
+chậm rõ — đúng thứ `apt`, `git`, build và Docker layer làm suốt ngày.
+
+Cũng đừng mua Gen4 cao cấp (990 PRO, SN850X): nóng trong vỏ kín, ăn điện từ cổng
+USB vốn đã hạn chế, và vẫn bị cắt tốc độ xuống ~1/3.
+
+Chọn 1TB thay vì 500GB: chừa trống ~20% giúp SSD bền, quan trọng hơn hẳn nếu box
+hoá ra không TRIM được.
+
 Toàn bộ ổ SSD sẽ bị xoá. Passphrase LUKS gõ mỗi lần boot — chọn cái gõ được
 nhanh trên bàn phím lạ, và **ghi lại ở nơi khác**: mất passphrase là mất sạch,
 không có cửa sau.
+
+### Kiểm tra ngay khi hàng về
+
+Lắp SSD vào box, cắm vào một máy Ubuntu bất kỳ (chưa cần cài gì):
+
+```bash
+lsusb | grep -iE 'realtek|jmicron'   # chipset có đúng như quảng cáo không
+lsusb -t                             # phải thấy Driver=uas, KHÔNG phải usb-storage
+sudo hdparm -t --direct /dev/sdX     # kỳ vọng 800–1000 MB/s ở cổng 10Gbps
+```
+
+`Driver=usb-storage` nghĩa là UASP không hoạt động — thường do cắm nhầm cổng USB
+2.0, hoặc box nói dối về chipset. Tốc độ ~40 MB/s cũng là dấu hiệu cổng USB 2.0.
+Cả hai trường hợp đều nên đổi cổng trước, còn không thì trả hàng — đừng cài
+Ubuntu lên rồi mới phát hiện.
 
 ## 1. Tạo USB cài đặt
 
