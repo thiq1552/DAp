@@ -9,13 +9,29 @@ máy đã cài nó. Mọi thứ ở đây khác ở ba chỗ: bootloader đặt 
 theo driver của mọi phần cứng, và mọi tham chiếu đĩa đều bằng UUID. Ba việc đó
 nằm trong [`lib-portable.sh`](lib-portable.sh), dùng chung cho cả hai đường dưới.
 
+## Gọi tên cho khỏi lẫn
+
+| Tên trong tài liệu | Là cái gì |
+|---|---|
+| **USB** (trong tên script là `stick`) | Cái USB 64GB của bạn. Sau khi dựng xong, **nó chính là hệ điều hành** — không phải bộ cài, không phải ổ chứa file |
+| **Máy nhà** | Máy Ubuntu ở nhà bạn. Chỉ dùng một lần, để dựng cái USB |
+| **Máy công ty cấp** | Laptop/PC công ty giao, đang chạy **Windows**. Chỉ cho USB mượn CPU. Không cài gì lên nó, không sửa gì trong nó |
+| `ssd` | Tên của hệ thống-trên-USB khi nó lên bảng tin ccbus |
+
+Lưu ý `ssd` chỉ là một cái tên — hệ thống này nằm trên USB, không liên quan gì
+tới ổ SSD của đường B. Muốn tên khác thì đổi `--hostname` lúc dựng.
+
+Bốn máy `acer`, `vivo`, `cong-ty`, `mac` là các agent đã có sẵn trên ccbus từ
+trước. **Máy công ty cấp không phải một agent** — nó chỉ là phần cứng; agent
+chính là cái USB, dù nó đang cắm ở máy nào.
+
 ## Chọn đường nào
 
-| | **A. USB stick sẵn có** | **B. SSD trong box** |
+| | **A. USB sẵn có** | **B. SSD trong box** |
 |---|---|---|
 | Script | [`build-stick.sh`](build-stick.sh) | [`make-portable.sh`](make-portable.sh) |
 | Cách dựng | `debootstrap` thẳng từ máy Ubuntu ở nhà | Trình cài đặt Ubuntu + USB cài đặt |
-| Cần thêm gì | Không — một stick là đủ | Phải mua SSD + box, cần thêm USB cài đặt |
+| Cần thêm gì | Không — một USB là đủ | Phải mua SSD + box, cần thêm USB cài đặt |
 | Giao diện | Console, không GUI | Desktop đầy đủ |
 | Hợp với | Để máy chạy task qua buổi chiều, không lưu file | Dùng như máy làm việc di động |
 
@@ -29,19 +45,19 @@ bootloader bị ghi nhầm vào ổ trong của máy — không tồn tại. Cũ
 
 ---
 
-# Đường A — USB stick, dựng bằng debootstrap
+# Đường A — USB, dựng bằng debootstrap
 
-Hệ thống thu được: Ubuntu Server mã hoá LUKS, không GUI, **ghi xuống stick rất
-ít**. USB stick có ghi ngẫu nhiên 4K cực chậm (0.3–1 MB/s, kém SSD hai bậc) và
-không có wear leveling tử tế, nên chạy Ubuntu Desktop lên stick là đơ liên tục và
-chết stick sau vài tuần. Cấu hình dưới đây né gần hết chỗ ghi:
+Hệ thống thu được: Ubuntu Server mã hoá LUKS, không GUI, **ghi xuống USB rất
+ít**. USB có ghi ngẫu nhiên 4K cực chậm (0.3–1 MB/s, kém SSD hai bậc) và
+không có wear leveling tử tế, nên chạy Ubuntu Desktop lên USB là đơ liên tục và
+chết USB sau vài tuần. Cấu hình dưới đây né gần hết chỗ ghi:
 
 | Thiết lập | Tác dụng |
 |---|---|
 | Không cài desktop | Bỏ nguồn ghi nền lớn nhất |
 | `journald Storage=volatile` | Log nằm trong RAM, mất khi tắt máy — bạn không cần lưu |
-| `/tmp`, `/var/tmp` là tmpfs | Ghi tạm không chạm stick |
-| zram thay swap | Swap trên stick là án tử cho nó |
+| `/tmp`, `/var/tmp` là tmpfs | Ghi tạm không chạm USB |
+| zram thay swap | Swap trên USB là án tử cho nó |
 | `commit=600` | ext4 gom ghi 10 phút mới xả một lần |
 | `noatime` | Không ghi lại thời điểm truy cập mỗi lần đọc file |
 | Tắt unattended-upgrades | Không tự cập nhật ngầm lúc nửa đêm |
@@ -49,19 +65,57 @@ chết stick sau vài tuần. Cấu hình dưới đây né gần hết chỗ gh
 Đánh đổi: rút nóng hoặc mất điện thì mất tối đa 10 phút thay đổi cuối, và log
 biến mất sau mỗi lần tắt. Với mục đích "để máy chạy task" thì cả hai đều không sao.
 
-> **Chỉ có đúng một thiết bị USB trong toàn bộ đường A** — cái stick 64GB, và nó
+> **Chỉ có đúng một thiết bị USB trong toàn bộ đường A** — cái USB 64GB, và nó
 > *là* hệ điều hành. Không có USB cài đặt riêng, vì `debootstrap` dựng thẳng từ
-> máy Ubuntu đang chạy chứ không qua trình cài đặt nào. Mọi chữ "stick" dưới đây
+> máy Ubuntu đang chạy chứ không qua trình cài đặt nào. Mọi chữ "USB" dưới đây
 > đều trỏ vào đúng cái đó. (Đường B mới cần hai thiết bị: một USB cài đặt và ổ SSD.)
+
+## A0. Máy công ty cấp — cần cài gì?
+
+**Không cài gì cả.** Windows trên máy đó không bị đụng tới: không cài phần mềm,
+không thêm driver, không sửa registry, không tạo phân vùng. Toàn bộ hệ điều hành
+nằm trên USB, và ổ đĩa trong máy còn bị khoá chỉ-đọc lúc boot (mục A3).
+
+Nhưng có bốn thứ phải **kiểm tra** trước, làm một lần. Nếu thứ nào không đạt thì
+biết sớm còn hơn đứng mò lúc 5 giờ chiều:
+
+**1. BitLocker — quan trọng nhất.** Ổ Windows của máy công ty rất hay được mã hoá
+BitLocker. Khi đó, đổi thứ tự boot hoặc tắt Secure Boot có thể làm Windows đòi
+recovery key ở lần khởi động sau. Mở CMD hoặc PowerShell **bằng quyền admin**:
+
+```
+manage-bde -status
+```
+
+Thấy `Protection Status: Protection On` thì **lấy recovery key trước khi động vào
+BIOS**. Key nằm trong tài khoản Microsoft/Azure AD của công ty, hoặc phải xin IT.
+Không có key mà lỡ kích hoạt là máy công ty không vào được Windows — hỏng việc
+thật, không phải phiền toái nhỏ.
+
+**2. BIOS có mật khẩu không.** Khởi động lại, bấm `F2` hoặc `Del`. Bị hỏi mật khẩu
+mà bạn không có thì kế hoạch dừng ở đây.
+
+**3. Boot từ USB có bị chặn không.** Trong BIOS tìm mục `USB Boot` — nhiều máy
+công ty tắt hẳn. Cũng tắt luôn `Fast Boot` nếu có, không thì boot menu hay bị bỏ qua.
+
+**4. Phím mở boot menu.** Acer/Lenovo/Dell thường là `F12`, HP là `F9`. Ghi nhớ
+để khỏi mò lúc vội.
+
+Secure Boot thì **không cần tắt** — script đặt shim đã ký của Ubuntu vào USB nên
+boot được cả khi Secure Boot đang bật. Cứ để nguyên, đỡ một thay đổi trong BIOS.
+
+Còn *Fast Startup* của Windows (Windows không tắt hẳn mà ngủ đông một phần) thì
+kệ nó, đừng tắt. Nó chỉ gây hỏng dữ liệu nếu Linux mount ổ Windows để ghi — mà ở
+đây ổ đó không bao giờ được mount, lại còn bị khoá chỉ-đọc.
 
 ## A1. Trên máy Ubuntu ở nhà
 
 ```bash
 sudo apt install debootstrap cryptsetup-bin gdisk dosfstools parted
-lsblk -o NAME,SIZE,TRAN,MODEL          # tìm đúng tên stick
+lsblk -o NAME,SIZE,TRAN,MODEL          # tìm đúng tên USB
 ```
 
-Xem trước kế hoạch, **chưa đụng gì vào stick**:
+Xem trước kế hoạch, **chưa đụng gì vào USB**:
 
 ```bash
 sudo ./deploy/ssd/build-stick.sh /dev/sdX --dry-run
@@ -93,13 +147,13 @@ filesystem trong LUKS, đỡ một tầng phức tạp không dùng đến.
 
 Đừng mang thẳng lên công ty — boot thử ngay trên máy vừa dựng nó.
 
-Script chạy xong đã tự umount và đóng LUKS, nên **cứ để nguyên stick trong cổng**:
-tắt máy nhà, bật lại, vào boot menu chọn stick, gõ passphrase, đăng nhập. Không
+Script chạy xong đã tự umount và đóng LUKS, nên **cứ để nguyên USB trong cổng**:
+tắt máy nhà, bật lại, vào boot menu chọn USB, gõ passphrase, đăng nhập. Không
 phải rút ra cắm vào gì cả.
 
 Lúc này bạn có hai hệ điều hành trên cùng cái máy nhà: Ubuntu trong ổ trong (cái
-vừa dùng để dựng) và Ubuntu trên stick. Chọn nhầm thì chỉ việc tắt đi boot lại —
-stick không đụng gì tới ổ trong.
+vừa dùng để dựng) và Ubuntu trên USB. Chọn nhầm thì chỉ việc tắt đi boot lại —
+USB không đụng gì tới ổ trong.
 
 Vào được rồi thì nối mạng và nối bảng tin:
 
@@ -113,7 +167,7 @@ curl -fsSL https://claude.ai/install.sh | bash
 Token lấy từ máy chủ ccbus bằng `./deploy/add-agent.sh ssd` — lệnh đó cấp token
 cho máy mới mà không xoay token của 4 máy đang chạy.
 
-## A3. Máy công ty còn lại gì sau khi rút stick
+## A3. Máy công ty còn lại gì sau khi rút USB
 
 Mục tiêu là mượn CPU, không đụng đĩa. Hệ thống này không chạm vào ổ trong vì bốn
 lý do độc lập, cái sau chặn được cả khi cái trước hỏng:
@@ -134,7 +188,7 @@ sudo dd if=/dev/zero of=/dev/nvme0n1 count=1   # phải báo "Operation not perm
 ```
 
 Nếu `RO` vẫn là 0, xem log: `journalctl -t protect-internal-disks`. Script cố tình
-**tha** ổ nào nó không phân loại được kiểu kết nối, vì khoá nhầm cái stick đang
+**tha** ổ nào nó không phân loại được kiểu kết nối, vì khoá nhầm cái USB đang
 chạy sẽ biến hệ thống thành chỉ-đọc giữa chừng.
 
 ### Những dấu vết vẫn còn
@@ -146,7 +200,7 @@ trên router/DHCP server. Traffic Tailscale là UDP mã hoá — nội dung thì
 đọc được, nhưng việc *có* traffic thì hiện rõ. Đây là dấu vết nằm ngoài cái máy,
 khoá ổ đĩa không giải quyết được.
 
-**Đừng `apt upgrade` gói GRUB khi đang cắm ở máy công ty.** Script dựng stick
+**Đừng `apt upgrade` gói GRUB khi đang cắm ở máy công ty.** Script dựng USB
 dùng `grub-install --no-nvram` nên không thêm entry vào NVRAM của máy nào. Nhưng
 postinst của gói `grub-efi-*` khi cập nhật có thể tự chạy `grub-install` và ghi
 NVRAM của cái máy đang cắm. Cập nhật ở nhà, đừng cập nhật ở công ty.
@@ -158,7 +212,7 @@ thay đổi khi boot hệ điều hành khác. Không xoá được từ phía h
 
 ## A4. Quy trình dùng hàng ngày
 
-Trước khi về, ở máy công ty: cắm stick → boot menu → passphrase → đăng nhập →
+Trước khi về, ở máy công ty: cắm USB → boot menu → passphrase → đăng nhập →
 kiểm tra `tailscale status` thấy online → để đó, không tắt màn hình cũng được.
 Về nhà thì `ssh ssd` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`.
 
@@ -168,21 +222,21 @@ Kết thúc thì tắt sạch, từ nhà cũng được:
 ssh ssd sudo poweroff
 ```
 
-Sáng hôm sau ra rút stick. Máy bật lại là vào Windows như chưa có gì xảy ra.
+Sáng hôm sau ra rút USB. Máy bật lại là vào Windows như chưa có gì xảy ra.
 
-**Stick phải cắm suốt thời gian máy chạy** — nó là ổ root, không phải bộ cài.
+**USB phải cắm suốt thời gian máy chạy** — nó là ổ root, không phải bộ cài.
 Ai rút giữa chừng thì Linux chết ngay tại chỗ: bẩn, nhưng ổ trong vẫn không bị
 ghi gì, và máy khởi động lại là về Windows. Mất tối đa 10 phút thay đổi cuối
-trên stick vì `commit=600`.
+trên USB vì `commit=600`.
 
 Ba chỗ kế hoạch có thể vỡ, biết trước thì đỡ mất buổi:
 
-**Bạn phải có mặt để boot.** Cắm stick, chọn boot menu, gõ passphrase — đều cần
+**Bạn phải có mặt để boot.** Cắm USB, chọn boot menu, gõ passphrase — đều cần
 tay người. Không có cách boot nó từ xa.
 
 **LUKS chặn khởi động lại tự động.** Máy reboot vì bất kỳ lý do gì — mất điện, IT
 đẩy update — là dừng ở màn hình hỏi passphrase cho tới sáng hôm sau. Đó là cái
-giá của mã hoá; đổi lại, ai rút stick mang đi cũng không đọc được token ccbus và
+giá của mã hoá; đổi lại, ai rút USB mang đi cũng không đọc được token ccbus và
 SSH key của bạn.
 
 **Máy phải không được ngủ.** Script đã `mask` sẵn suspend/hibernate và đặt đóng
