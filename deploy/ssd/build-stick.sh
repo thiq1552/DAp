@@ -239,6 +239,13 @@ done
 TRAN="$(lsblk -dno TRAN "$DEV" 2>/dev/null || true)"
 SIZE="$(lsblk -dno SIZE "$DEV" 2>/dev/null || true)"
 MODEL="$(lsblk -dno MODEL "$DEV" 2>/dev/null || true)"
+
+# Hệ thống cài xong chiếm ~2.7GB (linux-firmware một mình đã 534MB), cộng 1.5GB
+# cho ESP và /boot. Dưới 8GB là không đủ chỗ xoay xở.
+BYTES="$(blockdev --getsize64 "$DEV" 2>/dev/null || echo 0)"
+GB=$(( BYTES / 1000000000 ))
+[ "$GB" -ge 8 ] || die "$DEV chỉ có ${GB}GB. Cần tối thiểu 8GB, khuyên từ 16GB trở lên."
+[ "$GB" -ge 14 ] || warn "$DEV chỉ ${GB}GB — cài được nhưng chật, để ý dung lượng khi cài thêm gói."
 [ "$TRAN" = "usb" ] || warn "$DEV không nối qua USB (tran=${TRAN:-?}). Chắc chắn đúng thiết bị chứ?"
 
 echo
@@ -274,8 +281,10 @@ trap cleanup EXIT
 log "Xoá bảng phân vùng cũ và tạo GPT"
 wipefs -a "$DEV" >/dev/null
 sgdisk --zap-all "$DEV" >/dev/null
+# /boot 1G đủ cho 2-3 kernel: initramfs dựng với MODULES=most nặng ~150MB mỗi cái,
+# cộng kernel image ~15MB. Rộng hơn nữa chỉ phí trên thiết bị 16GB.
 sgdisk -n1:0:+512M -t1:ef00 -c1:ESP \
-       -n2:0:+1536M -t2:8300 -c2:boot \
+       -n2:0:+1024M -t2:8300 -c2:boot \
        -n3:0:0     -t3:8309 -c3:luks "$DEV" >/dev/null
 partprobe "$DEV"; udevadm settle
 

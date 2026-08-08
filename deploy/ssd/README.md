@@ -228,9 +228,30 @@ Phân vùng nó tạo:
 
 ```
 p1   512M   fat32   ESP        -> /boot/efi
-p2   1.5G   ext4    /boot       (không mã hoá — GRUB phải đọc được)
+p2     1G   ext4    /boot       (không mã hoá — GRUB phải đọc được)
 p3   còn lại LUKS2 -> ext4 -> / (mở bằng passphrase lúc boot)
 ```
+
+Script từ chối thiết bị dưới 8GB và cảnh báo nếu dưới 14GB.
+
+### Hết bao nhiêu dung lượng
+
+| Thành phần | |
+|---|---|
+| Hệ nền debootstrap | ~350 MB |
+| Kernel + modules + `linux-modules-extra` | ~1.1 GB |
+| `linux-firmware` | 534 MB |
+| GRUB, cryptsetup, systemd | ~200 MB |
+| NetworkManager, ssh, git, python3 | ~150 MB |
+| Claude Code, Tailscale | ~350 MB |
+| **Tổng** | **~2.7 GB** |
+
+Trên USB 16GB: trừ 1.5GB cho ESP và `/boot`, còn ~13.4GB cho root, dùng hết 2.7GB
+→ **trống khoảng 10.8GB**. Và nó không phình thêm khi dùng, vì `/workspace` với
+log đều nằm trong RAM còn `.deb` thì không giữ lại.
+
+`linux-modules-extra` và `linux-firmware` chiếm gần hai phần ba, nhưng đó chính là
+thứ làm USB boot được trên máy lạ — không cắt được.
 
 Không có phân vùng swap: swap nằm trong RAM qua zram. Không có LVM: chỉ một
 filesystem trong LUKS, đỡ một tầng phức tạp không dùng đến.
