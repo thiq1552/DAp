@@ -99,11 +99,67 @@ curl -fsSL https://claude.ai/install.sh | bash
 Token lấy từ máy chủ ccbus bằng `./deploy/add-agent.sh ssd` — lệnh đó cấp token
 cho máy mới mà không xoay token của 4 máy đang chạy.
 
-## A3. Quy trình dùng hàng ngày
+## A3. Máy công ty còn lại gì sau khi rút stick
+
+Mục tiêu là mượn CPU, không đụng đĩa. Hệ thống này không chạm vào ổ trong vì bốn
+lý do độc lập, cái sau chặn được cả khi cái trước hỏng:
+
+| | |
+|---|---|
+| Không có desktop | Không có `udisks` tự động mount ổ Windows khi thấy nó |
+| Không cài `ntfs-3g` | Muốn mount NTFS bằng tay cũng không có driver |
+| Không swap trên đĩa | Swap nằm trong RAM qua zram — nội dung RAM không bao giờ rơi xuống đĩa nào |
+| `protect-internal-disks.service` | Lúc boot, mọi ổ **không phải USB** bị `blockdev --setro`. Kernel từ chối mọi lệnh ghi, kể cả `dd` chạy bằng root |
+
+Lớp thứ tư là lớp duy nhất không dựa vào "không có lý do gì để ghi". Kiểm tra sau
+khi boot:
+
+```bash
+lsblk -o NAME,SIZE,RO,TRAN,MOUNTPOINTS     # ổ trong phải hiện RO=1
+sudo dd if=/dev/zero of=/dev/nvme0n1 count=1   # phải báo "Operation not permitted"
+```
+
+Nếu `RO` vẫn là 0, xem log: `journalctl -t protect-internal-disks`. Script cố tình
+**tha** ổ nào nó không phân loại được kiểu kết nối, vì khoá nhầm cái stick đang
+chạy sẽ biến hệ thống thành chỉ-đọc giữa chừng.
+
+### Những dấu vết vẫn còn
+
+Nói thẳng, vì "không lưu gì" chỉ đúng với ổ đĩa:
+
+**Mạng công ty thấy bạn.** Máy xin DHCP thì lease ghi lại MAC và hostname `ssd`
+trên router/DHCP server. Traffic Tailscale là UDP mã hoá — nội dung thì không ai
+đọc được, nhưng việc *có* traffic thì hiện rõ. Đây là dấu vết nằm ngoài cái máy,
+khoá ổ đĩa không giải quyết được.
+
+**Đừng `apt upgrade` gói GRUB khi đang cắm ở máy công ty.** Script dựng stick
+dùng `grub-install --no-nvram` nên không thêm entry vào NVRAM của máy nào. Nhưng
+postinst của gói `grub-efi-*` khi cập nhật có thể tự chạy `grub-install` và ghi
+NVRAM của cái máy đang cắm. Cập nhật ở nhà, đừng cập nhật ở công ty.
+
+**Firmware và TPM.** Một số BIOS ghi log thiết bị đã boot, và giá trị PCR của TPM
+thay đổi khi boot hệ điều hành khác. Không xoá được từ phía hệ điều hành.
+
+**Có người nhìn thấy màn hình.** Cái này thì không có giải pháp kỹ thuật nào.
+
+## A4. Quy trình dùng hàng ngày
 
 Trước khi về, ở máy công ty: cắm stick → boot menu → passphrase → đăng nhập →
 kiểm tra `tailscale status` thấy online → để đó, không tắt màn hình cũng được.
 Về nhà thì `ssh ssd` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`.
+
+Kết thúc thì tắt sạch, từ nhà cũng được:
+
+```bash
+ssh ssd sudo poweroff
+```
+
+Sáng hôm sau ra rút stick. Máy bật lại là vào Windows như chưa có gì xảy ra.
+
+**Stick phải cắm suốt thời gian máy chạy** — nó là ổ root, không phải bộ cài.
+Ai rút giữa chừng thì Linux chết ngay tại chỗ: bẩn, nhưng ổ trong vẫn không bị
+ghi gì, và máy khởi động lại là về Windows. Mất tối đa 10 phút thay đổi cuối
+trên stick vì `commit=600`.
 
 Ba chỗ kế hoạch có thể vỡ, biết trước thì đỡ mất buổi:
 

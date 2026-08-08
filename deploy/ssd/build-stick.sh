@@ -111,6 +111,61 @@ GRUB_CMDLINE_LINUX_DEFAULT="usbcore.autosuspend=-1"
 GRUB_CMDLINE_LINUX=""
 EOF
 
+  # Máy công ty chỉ cho mượn CPU. Đánh dấu chỉ-đọc mọi ổ không phải USB ngay lúc
+  # boot, để việc "không ghi lên ổ trong" là do kernel ép chứ không phải do mình
+  # nhớ đừng làm. Cả `mount` lẫn `dd` đều bị từ chối sau bước này.
+  mkdir -p "$root/usr/local/sbin" "$root/etc/systemd/system/multi-user.target.wants"
+  cat >"$root/usr/local/sbin/protect-internal-disks" <<'PROTECT'
+#!/usr/bin/env bash
+set -uo pipefail
+
+# Ổ đang chứa / — lần ngược từ mapper LUKS lên đĩa vật lý.
+root_disk="$(lsblk -no PKNAME "$(realpath "$(findmnt -no SOURCE /)")" 2>/dev/null | head -1)"
+while [ -n "$root_disk" ] && [ -n "$(lsblk -no PKNAME "/dev/$root_disk" 2>/dev/null | head -1)" ]; do
+  root_disk="$(lsblk -no PKNAME "/dev/$root_disk" | head -1)"
+done
+
+for path in /sys/block/*; do
+  dev="$(basename "$path")"
+  case "$dev" in loop*|ram*|zram*|dm-*|sr*|md*) continue ;; esac
+  [ "$dev" = "$root_disk" ] && continue
+
+  # Chỉ khoá khi chắc chắn phân loại được và chắc chắn KHÔNG phải USB.
+  # Không đọc được kiểu kết nối thì tha: khoá nhầm cái stick đang chạy sẽ biến
+  # hệ thống thành chỉ-đọc giữa chừng, tệ hơn nhiều so với việc bỏ sót một ổ mà
+  # dù sao cũng chẳng có gì định ghi vào.
+  tran="$(lsblk -dno TRAN "/dev/$dev" 2>/dev/null)"
+  if [ -z "$tran" ]; then
+    logger -t protect-internal-disks "bỏ qua /dev/$dev: không xác định được kiểu kết nối"
+    continue
+  fi
+  [ "$tran" = usb ] && continue
+
+  if blockdev --setro "/dev/$dev" 2>/dev/null; then
+    logger -t protect-internal-disks "đã khoá chỉ-đọc /dev/$dev"
+  fi
+done
+exit 0
+PROTECT
+  chmod 755 "$root/usr/local/sbin/protect-internal-disks"
+
+  cat >"$root/etc/systemd/system/protect-internal-disks.service" <<'EOF'
+[Unit]
+Description=Khoá chỉ-đọc mọi ổ đĩa trong máy (chỉ mượn CPU, không đụng đĩa)
+After=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/protect-internal-disks
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  ln -sf ../protect-internal-disks.service \
+    "$root/etc/systemd/system/multi-user.target.wants/protect-internal-disks.service"
+
   printf '%s\n' "$HOSTNAME_NEW" >"$root/etc/hostname"
   cat >"$root/etc/hosts" <<EOF
 127.0.0.1   localhost
