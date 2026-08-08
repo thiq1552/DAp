@@ -4,7 +4,7 @@
 # CHỈ ĐỌC — không ghi, không format, không đụng vào thiết bị nào. Chạy được
 # không cần sudo (thiếu quyền thì vài mục hiện "không đọc được", không sao).
 #
-# Dùng: ./deploy/ssd/preflight.sh
+# Dùng: ./deploy/portable/preflight.sh
 set -uo pipefail
 
 RELEASE="${1:-noble}"
@@ -107,7 +107,7 @@ say "  $ok đạt, $warn cảnh báo, $fail lỗi"
 if [ "$fail" -eq 0 ]; then
   say
   say "  Sẵn sàng. Bước tiếp — xem trước, vẫn chưa ghi gì:"
-  say "    sudo ./deploy/ssd/build-stick.sh /dev/sdX --dry-run"
+  say "    sudo ./deploy/portable/build-stick.sh /dev/sdX --dry-run"
   exit 0
 fi
 say

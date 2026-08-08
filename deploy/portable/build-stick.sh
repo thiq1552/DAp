@@ -6,8 +6,8 @@
 # cũng không có chuyện bootloader bị ghi nhầm vào ổ trong.
 #
 # Dùng:
-#   sudo ./deploy/ssd/build-stick.sh /dev/sdX --user thiq --hostname ssd
-#   sudo ./deploy/ssd/build-stick.sh /dev/sdX --dry-run     # xem kế hoạch, không đụng ổ
+#   sudo ./deploy/portable/build-stick.sh /dev/sdX --user thiq --hostname usb16
+#   sudo ./deploy/portable/build-stick.sh /dev/sdX --dry-run     # xem kế hoạch, không đụng ổ
 #
 # Kết quả: stick boot được trên mọi máy x86_64 UEFI, hỏi passphrase LUKS, vào
 # thẳng console. Không GUI. /tmp và log nằm trong RAM, swap dùng zram — stick
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=deploy/ssd/lib-portable.sh
+# shellcheck source=deploy/portable/lib-portable.sh
 . "$HERE/lib-portable.sh"
 
 DEV=""; HOSTNAME_NEW="ssd"; USERNAME=""; RELEASE="noble"; DRY_RUN=0

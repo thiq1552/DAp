@@ -205,7 +205,7 @@ Cắm USB vào `acer` hoặc `vivo` — máy nào chạy Ubuntu cũng được, 
 nhau. Rồi chạy bản kiểm tra trước; nó **chỉ đọc**, không ghi vào đâu:
 
 ```bash
-./deploy/ssd/preflight.sh
+./deploy/portable/preflight.sh
 ```
 
 Nó trả lời bốn câu: máy này có đủ công cụ chưa (thiếu thì in sẵn lệnh `apt`),
@@ -223,14 +223,14 @@ sudo apt install debootstrap cryptsetup-bin gdisk dosfstools parted
 Xem trước kế hoạch, **chưa đụng gì vào USB**:
 
 ```bash
-sudo ./deploy/ssd/build-stick.sh /dev/sdX --dry-run
+sudo ./deploy/portable/build-stick.sh /dev/sdX --dry-run
 ```
 
 Nó in ra bảng phân vùng dự kiến và toàn bộ nội dung `/etc/fstab`, `/etc/crypttab`
 sẽ ghi. Đọc kỹ rồi mới chạy thật:
 
 ```bash
-sudo ./deploy/ssd/build-stick.sh /dev/sdX --user <tên-đăng-nhập> --hostname usb16
+sudo ./deploy/portable/build-stick.sh /dev/sdX --user <tên-đăng-nhập> --hostname usb16
 ```
 
 Script hỏi ba thứ: gõ lại đúng đường dẫn thiết bị để xác nhận (đây là lớp bảo vệ
@@ -500,7 +500,7 @@ Boot vào Ubuntu vừa cài trên ổ SSD (vẫn ở máy dùng để cài), n�
 
 ```bash
 git clone <repo> ~/ccbus && cd ~/ccbus
-sudo ./deploy/ssd/make-portable.sh
+sudo ./deploy/portable/make-portable.sh
 ```
 
 Script kiểm tra ổ, rồi làm 7 việc:

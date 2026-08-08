@@ -2,7 +2,7 @@
 # Biến một bản Ubuntu vừa cài lên SSD ngoài thành ổ boot được trên MỌI máy x86_64.
 #
 # Chạy từ CHÍNH hệ điều hành trên ổ SSD đó (đã boot vào nó), không chạy từ live USB.
-# Dùng: sudo ./deploy/ssd/make-portable.sh
+# Dùng: sudo ./deploy/portable/make-portable.sh
 #
 # Bản Ubuntu do trình cài đặt tạo ra chỉ boot được đúng cái máy đã cài nó, vì ba lý do:
 #   1. Bootloader nằm ở /EFI/ubuntu và phụ thuộc một entry trong NVRAM của máy đó.
@@ -11,7 +11,7 @@
 # Script này sửa cả ba, cộng vài thứ riêng của ổ USB (autosuspend, TRIM, noatime).
 set -euo pipefail
 
-# shellcheck source=deploy/ssd/lib-portable.sh
+# shellcheck source=deploy/portable/lib-portable.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-portable.sh"
 
 log()  { printf '==> %s\n' "$*"; }
