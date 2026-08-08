@@ -1,7 +1,7 @@
 # Ubuntu chạy từ ổ ngoài — cắm máy nào cũng boot
 
 Dựng một ổ USB chứa Ubuntu mã hoá LUKS, boot được trên **acer**, **vivo**,
-**cong-ty** — và lên bảng tin `ccbus` bằng token của agent `cong-ty` đã có sẵn.
+**cong-ty** — và lên bảng tin `ccbus` như một agent mới, đứng cạnh 4 máy đã có.
 
 Ổ do trình cài đặt Ubuntu tạo ra theo cách thông thường chỉ boot được đúng cái
 máy đã cài nó. Mọi thứ ở đây khác ở ba chỗ: bootloader đặt ở đường dẫn di động
@@ -11,8 +11,9 @@ nằm trong [`lib-portable.sh`](lib-portable.sh), dùng chung cho cả hai đư�
 
 ## Phương án tối ưu
 
-Dữ kiện: máy công ty cấp chạy Windows, RAM 16GB. Một USB 64GB (còn dư vài cái).
-Máy Ubuntu ở nhà để dựng. Tiêu chí cứng: **ngày bàn giao máy lại cho công ty,
+Dữ kiện: máy công ty cấp chạy Windows, RAM 16GB. Thiết bị có trong tay: **một USB
+16GB**. Ổ SSD 256GB gắn ngoài đang chạy agent `cong-ty` — vẫn dùng, không đụng vào.
+Máy `vivo` ở nhà để dựng. Tiêu chí cứng: **ngày bàn giao máy lại cho công ty,
 không được sót một byte nào của bạn trên đó.**
 
 Phương án: **đường A, cộng ba điều chỉnh.**
@@ -58,29 +59,41 @@ Những thứ **không** nằm trên máy nên cũng không xoá được: DHCP 
 công ty có ghi MAC và hostname, và một số BIOS ghi log thiết bị đã từng boot. Cả
 hai đều ngoài tầm của hệ điều hành.
 
-### USB dư dùng làm gì
+### Chỉ có một USB — nên biết trước
 
-Dựng cái thứ hai y hệt bằng cùng một lệnh, để sẵn ở nhà. USB flash chết đột ngột
-là chuyện thường, và bạn sẽ không muốn phát hiện điều đó vào 6 giờ chiều ở công ty.
+USB flash chết đột ngột là chuyện thường, và đây là thiết bị duy nhất bạn có cho
+việc này. Không có bản dự phòng nghĩa là hôm nó chết thì mất luôn buổi đó. Hai
+cách giảm đau, không cái nào tốn tiền:
+
+- **Đừng để thứ gì chỉ tồn tại trên USB.** Code thì push, kết quả thì đăng lên
+  ccbus. Dựng lại một cái mới mất 30 phút và một lệnh — miễn là không mất dữ liệu.
+- Khi nào mua thêm USB (hoặc ổ SSD), dựng bản thứ hai bằng đúng lệnh đó, để ở nhà.
 
 ## Gọi tên cho khỏi lẫn
 
 | Tên trong tài liệu | Là cái gì |
 |---|---|
-| **USB** (trong tên script là `stick`) | Cái USB 64GB của bạn. Sau khi dựng xong, **nó chính là hệ điều hành** — không phải bộ cài, không phải ổ chứa file |
+| **USB** (trong tên script là `stick`) | Cái USB 16GB của bạn. Sau khi dựng xong, **nó chính là hệ điều hành** — không phải bộ cài, không phải ổ chứa file |
 | **Máy nhà** | Máy Ubuntu ở nhà bạn. Chỉ dùng một lần, để dựng cái USB |
 | **Máy công ty cấp** | Laptop/PC công ty giao, đang chạy **Windows**. Chỉ cho USB mượn CPU. Không cài gì lên nó, không sửa gì trong nó |
-| `cong-ty` | Tên của hệ thống-trên-USB trên bảng tin ccbus. **Lấy từ token, không phải từ hostname** |
+| `usb16` | Tên của hệ thống-trên-USB trên bảng tin ccbus — agent **mới**, không phải `cong-ty` |
+| `cong-ty` | Agent đã có: ổ SSD 256GB gắn ngoài, vẫn đang chạy. USB không thay nó |
 
-Bốn máy `acer`, `vivo`, `cong-ty`, `mac` là các agent đã có sẵn trên ccbus từ
-trước. **Máy công ty cấp không phải một agent** — nó chỉ là phần cứng; agent
-chính là cái USB, dù nó đang cắm ở máy nào.
+Bốn máy `acer`, `vivo`, `cong-ty`, `mac` là các agent đã có sẵn trên ccbus.
+**Máy công ty cấp không phải một agent** — nó chỉ là phần cứng. Agent là cái ổ
+đang cắm vào nó: hiện tại là ổ SSD 256GB gắn ngoài, lên bảng tin dưới tên
+`cong-ty`.
 
-Tên agent đến từ **token**, không phải từ hostname: `resolve_agent()` trong
+Tên agent đến từ **token**, không phải hostname: `resolve_agent()` trong
 [`src/ccbus/server.py`](../../src/ccbus/server.py) tra bearer token ra tên máy.
-Nên cái USB dùng token `cong-ty` có sẵn là nó lên bảng tin đúng tên đó — không
-phải cấp token mới, không phải sửa gì trên máy chủ. `--hostname` chỉ là tên máy
-tự gọi mình ở local (dấu nhắc shell, SSH, DHCP lease); đặt trùng cho đỡ lẫn thôi.
+`--hostname` chỉ là tên máy tự gọi mình ở local (dấu nhắc shell, SSH, DHCP lease).
+
+> **Mỗi thiết bị một token riêng.** Cái USB 16GB là hệ thống **thứ hai**, đứng
+> cạnh ổ SSD `cong-ty` chứ không thay nó. Dùng chung token thì server thấy hai
+> thiết bị là *một* agent: `bus_status` gộp làm một dòng, `task_claim` của hai
+> bên tranh nhau, và khoá của máy này lại nghĩ là của máy kia. Cấp token mới bằng
+> `./deploy/add-agent.sh <tên>` — lệnh đó thêm token mà không xoay token của các
+> máy đang chạy.
 
 ## Chọn đường nào
 
@@ -122,7 +135,7 @@ chết USB sau vài tuần. Cấu hình dưới đây né gần hết chỗ ghi:
 Đánh đổi: rút nóng hoặc mất điện thì mất tối đa 10 phút thay đổi cuối, và log
 biến mất sau mỗi lần tắt. Với mục đích "để máy chạy task" thì cả hai đều không sao.
 
-> **Chỉ có đúng một thiết bị USB trong toàn bộ đường A** — cái USB 64GB, và nó
+> **Chỉ có đúng một thiết bị USB trong toàn bộ đường A** — cái USB 16GB, và nó
 > *là* hệ điều hành. Không có USB cài đặt riêng, vì `debootstrap` dựng thẳng từ
 > máy Ubuntu đang chạy chứ không qua trình cài đặt nào. Mọi chữ "USB" dưới đây
 > đều trỏ vào đúng cái đó. (Đường B mới cần hai thiết bị: một USB cài đặt và ổ SSD.)
@@ -217,7 +230,7 @@ Nó in ra bảng phân vùng dự kiến và toàn bộ nội dung `/etc/fstab`,
 sẽ ghi. Đọc kỹ rồi mới chạy thật:
 
 ```bash
-sudo ./deploy/ssd/build-stick.sh /dev/sdX --user <tên-đăng-nhập> --hostname cong-ty
+sudo ./deploy/ssd/build-stick.sh /dev/sdX --user <tên-đăng-nhập> --hostname usb16
 ```
 
 Script hỏi ba thứ: gõ lại đúng đường dẫn thiết bị để xác nhận (đây là lớp bảo vệ
@@ -274,20 +287,21 @@ Vào được rồi thì nối mạng và nối bảng tin:
 nmtui                                   # chọn Wi-Fi
 sudo tailscale up                       # nếu 4 máy kia đang dùng Tailscale
 curl -fsSL https://claude.ai/install.sh | bash
-./deploy/setup-client.sh http://100.x.y.z:7717 <token-cong-ty> ten-project
+./deploy/setup-client.sh http://100.x.y.z:7717 <token-usb16> ten-project
 ```
 
-Token `cong-ty` **đã có sẵn** từ lần chạy `setup-host.sh acer vivo cong-ty mac`
-đầu tiên. Lấy lại nó trên máy chủ ccbus:
+Token lấy trên **máy chủ ccbus** trước, vì đây là agent mới:
 
 ```bash
-grep CCBUS_TOKENS ~/.ccbus/env      # dạng: acer:...,vivo:...,cong-ty:<token>,mac:...
+./deploy/add-agent.sh usb16
 ```
 
-Không cần cấp token mới, không sửa gì trên máy chủ. Chỉ khi bạn muốn cái USB là
-một agent **riêng** — đứng cạnh `cong-ty` chứ không phải là nó — thì mới dùng
-`./deploy/add-agent.sh <tên>`, lệnh đó thêm token mà không xoay token của 4 máy
-đang chạy.
+Lệnh đó sinh token, ghi vào `~/.ccbus/env`, khởi động lại server để nạp, rồi in
+sẵn dòng `setup-client.sh` để bạn dán sang. Token của `acer`, `vivo`, `cong-ty`,
+`mac` giữ nguyên không đổi.
+
+Đừng dùng lại token `cong-ty` — ổ SSD 256GB đang cầm nó. Hai thiết bị chung một
+token thì server thấy chúng là một agent, và `task_claim` của hai bên sẽ tranh nhau.
 
 ## A3. Máy công ty còn lại gì sau khi rút USB
 
@@ -317,7 +331,7 @@ chạy sẽ biến hệ thống thành chỉ-đọc giữa chừng.
 
 Nói thẳng, vì "không lưu gì" chỉ đúng với ổ đĩa:
 
-**Mạng công ty thấy bạn.** Máy xin DHCP thì lease ghi lại MAC và hostname `cong-ty`
+**Mạng công ty thấy bạn.** Máy xin DHCP thì lease ghi lại MAC và hostname `usb16`
 trên router/DHCP server. Traffic Tailscale là UDP mã hoá — nội dung thì không ai
 đọc được, nhưng việc *có* traffic thì hiện rõ. Đây là dấu vết nằm ngoài cái máy,
 khoá ổ đĩa không giải quyết được.
@@ -344,11 +358,11 @@ thay đổi khi boot hệ điều hành khác. Không xoá được từ phía h
 không cần ai đăng nhập. Để nguyên màn hình login thì không có phiên mở sẵn cho
 người đi ngang qua bàn.
 
-Về nhà thì `ssh cong-ty` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`. Làm
+Về nhà thì `ssh usb16` qua Tailscale, hoặc để nó tự nhận task từ `ccbus`. Làm
 việc trong `~/work` (chính là `/workspace`, nằm trong RAM):
 
 ```bash
-ssh cong-ty
+ssh usb16
 cd ~/work && git clone <repo> && cd <repo>
 ```
 
@@ -357,7 +371,7 @@ cd ~/work && git clone <repo> && cd <repo>
 Kết thúc thì tắt sạch, từ nhà cũng được:
 
 ```bash
-ssh cong-ty sudo poweroff
+ssh usb16 sudo poweroff
 ```
 
 Sáng hôm sau ra rút USB. Máy bật lại là vào Windows như chưa có gì xảy ra.
