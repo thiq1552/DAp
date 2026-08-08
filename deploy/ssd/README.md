@@ -49,6 +49,11 @@ chết stick sau vài tuần. Cấu hình dưới đây né gần hết chỗ gh
 Đánh đổi: rút nóng hoặc mất điện thì mất tối đa 10 phút thay đổi cuối, và log
 biến mất sau mỗi lần tắt. Với mục đích "để máy chạy task" thì cả hai đều không sao.
 
+> **Chỉ có đúng một thiết bị USB trong toàn bộ đường A** — cái stick 64GB, và nó
+> *là* hệ điều hành. Không có USB cài đặt riêng, vì `debootstrap` dựng thẳng từ
+> máy Ubuntu đang chạy chứ không qua trình cài đặt nào. Mọi chữ "stick" dưới đây
+> đều trỏ vào đúng cái đó. (Đường B mới cần hai thiết bị: một USB cài đặt và ổ SSD.)
+
 ## A1. Trên máy Ubuntu ở nhà
 
 ```bash
@@ -86,8 +91,17 @@ filesystem trong LUKS, đỡ một tầng phức tạp không dùng đến.
 
 ## A2. Boot thử ngay tại nhà
 
-Đừng mang thẳng lên công ty. Tắt máy, cắm lại stick, vào boot menu chọn nó, gõ
-passphrase, đăng nhập. Rồi nối mạng và nối bảng tin:
+Đừng mang thẳng lên công ty — boot thử ngay trên máy vừa dựng nó.
+
+Script chạy xong đã tự umount và đóng LUKS, nên **cứ để nguyên stick trong cổng**:
+tắt máy nhà, bật lại, vào boot menu chọn stick, gõ passphrase, đăng nhập. Không
+phải rút ra cắm vào gì cả.
+
+Lúc này bạn có hai hệ điều hành trên cùng cái máy nhà: Ubuntu trong ổ trong (cái
+vừa dùng để dựng) và Ubuntu trên stick. Chọn nhầm thì chỉ việc tắt đi boot lại —
+stick không đụng gì tới ổ trong.
+
+Vào được rồi thì nối mạng và nối bảng tin:
 
 ```bash
 nmtui                                   # chọn Wi-Fi
@@ -187,7 +201,7 @@ cái đó nằm ngoài tầm với của hệ điều hành, phải kiểm tra t
 | Box USB | 3.2 Gen2 10Gbps, chipset **RTL9210B** (ưu tiên) hoặc **JMS583** | Cả hai có UASP + TRIM; RTL9210B mát hơn và biết ngủ khi rảnh. Box 5Gbps đời cũ chậm và thường không TRIM → SSD xuống cấp nhanh |
 | Thermal pad | Loại đi kèm box | NVMe trong vỏ kín rất nóng, quá nhiệt sẽ throttle |
 | Cáp | USB-C↔C **và** một đầu C↔A | Máy cũ có thể chỉ còn cổng USB-A |
-| USB stick | ≥ 8GB | Chứa bộ cài |
+| USB cài đặt | ≥ 8GB, **riêng** ngoài ổ SSD | Chứa bộ cài Ubuntu. Đường B cần hai thiết bị USB: cái này để cài, ổ SSD là đích |
 | ISO | Ubuntu **24.04 LTS** Desktop | Bản LTS cũ hơn có driver ổn định trên nhiều đời máy hơn bản mới nhất. Nếu phần cứng quá mới thì mới cần LTS đời sau |
 
 ### Vì sao SSD phải có DRAM
