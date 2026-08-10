@@ -45,7 +45,26 @@ TS_HOSTNAME="$(printf '%s' "$TS_HOSTNAME" | tr '[:upper:]' '[:lower:]' | tr -c '
 echo "==> Kiểm tra mạng ra Internet"
 if ! curl -fsS --max-time 15 -o /dev/null https://login.tailscale.com/; then
   echo "Không ra được login.tailscale.com — máy này phải có Internet trước đã." >&2
-  echo "  Wi-Fi ở tty:  nmcli device wifi list && nmcli device wifi connect '<SSID>' --ask" >&2
+  echo >&2
+  if command -v nmcli >/dev/null 2>&1; then
+    echo "--- nmcli device status ---" >&2
+    nmcli device status >&2 || true
+  fi
+  if command -v rfkill >/dev/null 2>&1; then
+    echo "--- rfkill list ---" >&2
+    rfkill list >&2 || true
+  fi
+  cat >&2 <<'EOF'
+
+Nối Wi-Fi ở tty:
+  sudo rfkill unblock all                       # nếu rfkill báo "Soft blocked: yes"
+  sudo nmcli device set <iface> managed yes     # nếu device status báo "unmanaged"
+  sudo nmcli device wifi rescan
+  nmcli device wifi list
+  sudo nmcli device wifi connect "<ssid>" --ask
+
+Cách nhanh hơn: cắm dây USB từ điện thoại rồi bật USB tethering.
+EOF
   exit 1
 fi
 

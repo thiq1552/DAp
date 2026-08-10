@@ -113,6 +113,33 @@ Vài lưu ý khi máy được điều khiển là laptop:
 - Máy đó cũng cần chạy `setup-client.sh` mới thấy bảng tin ccbus — vào được SSH
   không có nghĩa là đã nối ccbus.
 
+#### Máy chưa có mạng (kẹt ở tty)
+
+Máy mới cài thường chưa nối Wi-Fi, mà không có Internet thì không đăng nhập
+tailnet được. Dấu hiệu trong `ip a`: `wlp2s0` ở trạng thái `NO-CARRIER ... DOWN`,
+và `tailscale0` chỉ có địa chỉ `fe80::` chứ không có `100.x.y.z`.
+
+```bash
+nmcli radio wifi          # mong đợi: enabled
+rfkill list               # mong đợi: mọi dòng đều "no"
+nmcli device status       # wlp2s0 là "disconnected" hay "unmanaged"?
+```
+
+| Triệu chứng | Xử lý |
+|---|---|
+| `Soft blocked: yes` | `sudo rfkill unblock all && nmcli radio wifi on` |
+| `Hard blocked: yes` | công tắc cứng — bấm `Fn` + phím ăng-ten trên bàn phím |
+| `unmanaged` | `sudo nmcli device set wlp2s0 managed yes` (netplan đang giao card cho `systemd-networkd`) |
+| Quét ra bảng rỗng | `sudo nmcli device wifi rescan` rồi `nmcli device wifi list` |
+
+Nối vào mạng: `sudo nmcli device wifi connect "<ssid>" --ask` (thêm `hidden yes`
+nếu SSID ẩn).
+
+Nhanh nhất khi cần mạng ngay: cắm dây USB từ điện thoại rồi bật **USB tethering**
+— interface `usb0`/`enx…` hiện ra và NetworkManager tự lấy IP. Nhưng nhớ là
+Tailscale cần Internet **thường trực**, không chỉ lúc đăng nhập; rút dây là máy
+lại biến mất khỏi tailnet.
+
 ### 3. Trên mỗi máy con
 
 ```bash
