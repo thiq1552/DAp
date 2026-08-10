@@ -132,8 +132,20 @@ nmcli device status       # wlp2s0 là "disconnected" hay "unmanaged"?
 | `unmanaged` | `sudo nmcli device set wlp2s0 managed yes` (netplan đang giao card cho `systemd-networkd`) |
 | Quét ra bảng rỗng | `sudo nmcli device wifi rescan` rồi `nmcli device wifi list` |
 
-Nối vào mạng: `sudo nmcli device wifi connect "<ssid>" --ask` (thêm `hidden yes`
-nếu SSID ẩn).
+Nối vào mạng **và nhớ luôn cho lần khởi động sau**:
+
+```bash
+sudo ./deploy/wifi-autoconnect.sh "<ssid>"          # thêm --hidden nếu SSID ẩn
+```
+
+Script mở khoá rfkill, tự nhận card, rồi tạo profile tự nối: qua `nmcli` nếu
+NetworkManager đang quản card, qua netplan + `systemd-networkd` nếu không. Mật
+khẩu nhập ở prompt nên không lọt vào shell history. Nó cũng đặt
+`autoconnect-retries 0` — NetworkManager mặc định bỏ cuộc sau 4 lần thử, tức là
+router bật chậm hơn máy một chút là máy nằm ngoài mạng cho tới khi có người
+đăng nhập.
+
+Nối một lần không cần nhớ thì dùng `sudo nmcli device wifi connect "<ssid>" --ask`.
 
 Nhanh nhất khi cần mạng ngay: cắm dây USB từ điện thoại rồi bật **USB tethering**
 — interface `usb0`/`enx…` hiện ra và NetworkManager tự lấy IP. Nhưng nhớ là
