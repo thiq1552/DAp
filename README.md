@@ -61,19 +61,57 @@ máy đó.
 
 Sửa cấu hình sau này: `~/.ccbus/env`, rồi `systemctl --user restart ccbus`.
 
-### 2. Nối 4 máy với nhau
+### 2. Nối các máy với nhau
 
-Nếu 4 máy không cùng mạng LAN, dùng [Tailscale](https://tailscale.com) — đơn giản
-nhất, chạy được cả Ubuntu lẫn macOS, và không phải mở port ra Internet:
+Nếu các máy không cùng mạng LAN, dùng [Tailscale](https://tailscale.com) — đơn giản
+nhất, chạy được cả Ubuntu lẫn macOS, và không phải mở port ra Internet. Trên **mỗi**
+máy, chạy trong repo:
 
 ```bash
-# trên cả 4 máy
-curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
+./deploy/setup-tailscale.sh --hostname may-khac --keep-awake
 tailscale ip -4      # trên máy chủ, lấy IP dạng 100.x.y.z
 ```
 
+Script cài `tailscale`, bật `tailscaled`, đăng nhập vào tailnet, và bật **Tailscale
+SSH** để bạn ssh thẳng vào máy đó từ các máy còn lại. Không có màn hình đồ hoạ cũng
+chạy được: nó in ra một link `https://login.tailscale.com/a/...` để bạn mở bằng điện
+thoại. Tất cả các máy phải đăng nhập **cùng một tài khoản** thì mới thấy nhau.
+
 Cùng LAN thì dùng thẳng IP nội bộ. **Đừng mở port 7717 ra Internet** — token là
 lớp bảo vệ duy nhất, chưa có TLS.
+
+#### Điều khiển một máy từ xa
+
+Sau khi máy đó đã vào tailnet, từ bất kỳ máy nào khác trong tailnet:
+
+```bash
+ssh thi@may-khac              # tên máy do MagicDNS phân giải
+tailscale ssh thi@may-khac    # tương đương, không phụ thuộc MagicDNS
+tailscale status              # xem máy nào đang online
+```
+
+Tailscale SSH không dùng key hay password — quyền vào máy do policy file của tailnet
+quyết định. Tailnet mới mặc định cho phép bạn ssh vào chính máy của mình; nếu bị
+`access denied` thì vào admin console → **Access controls** và thêm:
+
+```json
+"ssh": [
+  { "action": "accept",
+    "src": ["autogroup:member"],
+    "dst": ["autogroup:self"],
+    "users": ["autogroup:nonroot", "root"] }
+]
+```
+
+Vài lưu ý khi máy được điều khiển là laptop:
+
+- `--keep-awake` chặn ngủ khi đóng nắp (`logind.conf.d` + mask `sleep.target`).
+  Không có nó thì đóng nắp là mất kết nối. Gỡ lại: xoá
+  `/etc/systemd/logind.conf.d/99-ccbus-keep-awake.conf` rồi `systemctl unmask`.
+- Thêm `--openssh` nếu muốn có `sshd` thường làm đường dự phòng; nhớ giới hạn
+  `ListenAddress` vào IP `100.x.y.z` để không phơi ra LAN.
+- Máy đó cũng cần chạy `setup-client.sh` mới thấy bảng tin ccbus — vào được SSH
+  không có nghĩa là đã nối ccbus.
 
 ### 3. Trên mỗi máy con
 
